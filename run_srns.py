@@ -10,7 +10,7 @@ import cv2
 from dataio import *
 from torch.utils.data import DataLoader
 
-from deep_space import *
+from srns import *
 from losses import *
 
 from tensorboardX import SummaryWriter
@@ -384,18 +384,18 @@ def main():
             val_dataset = None
         # model = DeepRayModel(num_objects=2433,
         # model = DeepRayModel(num_objects=4612,
-        model = DeepRayModel(num_objects=dataset.num_obj,
-                             embedding_size=opt.embedding_size,
-                             implicit_nf=opt.implicit_nf,
-                             has_params=opt.has_params,
-                             mode=opt.mode,
-                             renderer=opt.renderer,
-                             depth_supervision=opt.depth_supervision,
-                             freeze_rendering=opt.freeze_rendering,
-                             orthographic=opt.orthographic,
-                             freeze_var=opt.freeze_var,
-                             use_gt_depth=opt.gt_depth,
-                             tracing_steps=opt.tracing_steps)
+        model = SRNsModel(num_objects=dataset.num_obj,
+                          embedding_size=opt.embedding_size,
+                          implicit_nf=opt.implicit_nf,
+                          has_params=opt.has_params,
+                          mode=opt.mode,
+                          renderer=opt.renderer,
+                          depth_supervision=opt.depth_supervision,
+                          freeze_rendering=opt.freeze_rendering,
+                          orthographic=opt.orthographic,
+                          freeze_var=opt.freeze_var,
+                          use_gt_depth=opt.gt_depth,
+                          tracing_steps=opt.tracing_steps)
         final_ckpt_path = train(model, dataset, val_dataset)
         sys.stdout.write(final_ckpt_path)
     elif opt.train_test == 'test':
@@ -408,14 +408,14 @@ def main():
                                    img_sidelength=opt.img_sidelength,
                                    mode='val')
         # model = DeepRayModel(num_objects=2433,
-        model = DeepRayModel(num_objects=dataset.num_obj,
-                             embedding_size=opt.embedding_size,
-                             implicit_nf=opt.implicit_nf,
-                             has_params=opt.has_params,
-                             renderer=opt.renderer,
-                             mode=opt.mode,
-                             use_gt_depth=opt.gt_depth,
-                             tracing_steps=opt.tracing_steps)
+        model = SRNsModel(num_objects=dataset.num_obj,
+                          embedding_size=opt.embedding_size,
+                          implicit_nf=opt.implicit_nf,
+                          has_params=opt.has_params,
+                          renderer=opt.renderer,
+                          mode=opt.mode,
+                          use_gt_depth=opt.gt_depth,
+                          tracing_steps=opt.tracing_steps)
         test(model, dataset)
     else:
         print("Unknown mode.")

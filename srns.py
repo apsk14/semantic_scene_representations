@@ -18,7 +18,7 @@ from losses import *
 
 
 # noinspection PyCallingNonCallable
-class DeepRayModel(nn.Module):
+class SRNsModel(nn.Module):
     def __init__(self,
                  num_objects,
                  embedding_size,

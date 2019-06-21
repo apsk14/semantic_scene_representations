@@ -3,7 +3,7 @@
 export CUDA_VISIBLE_DEVICES=7
 #export CUDA_VISIBLE_DEVICES=9
 
-#python ../run_deepspace.py --train_test train \
+#python ../run_srns.py --train_test train \
 #                           --data_root /home/sitzmann/data/deep_space/data/shapenet_cars_no_transp/ \
 #                           --logging_root /home/sitzmann/data/deep_space/logging/ \
 #                           --use_images \
@@ -22,7 +22,7 @@ export CUDA_VISIBLE_DEVICES=7
 #                           --num_images 50 \
 #                           --renderer fc
 
-#python ../run_deepspace.py --train_test train \
+#python ../run_srns.py --train_test train \
 #                           --data_root /home/sitzmann/data/deep_space/data/shapenet_cars_no_transp/ \
 #                           --logging_root /home/sitzmann/data/deep_space/logging/ \
 #                           --use_images \
