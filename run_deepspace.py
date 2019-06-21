@@ -6,7 +6,6 @@ from torch import nn
 import torchvision
 import numpy as np
 import cv2
-import adabound
 
 from dataio import *
 from torch.utils.data import DataLoader
