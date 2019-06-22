@@ -134,9 +134,9 @@ def train(model, dataset, val_dataset):
 
                 optimizer.zero_grad()
 
-                dist_loss = model.get_distortion_loss(model_outputs, ground_truth)
+                dist_loss = model.get_image_loss(model_outputs, ground_truth)
                 reg_loss = model.get_regularization_loss(model_outputs, ground_truth)
-                var_loss = model.get_variational_loss()
+                var_loss = model.get_latent_loss()
 
                 weighted_kl_loss = var_loss * opt.kl_weight
 
@@ -190,7 +190,7 @@ def train(model, dataset, val_dataset):
                         for model_input, ground_truth in val_dataloader:
                             model_outputs = model(model_input)
 
-                            dist_loss = model.get_distortion_loss(model_outputs, ground_truth).cpu().numpy()
+                            dist_loss = model.get_image_loss(model_outputs, ground_truth).cpu().numpy()
                             psnr, ssim = model.get_psnr(model_outputs, ground_truth)
                             psnrs.append(psnr)
                             ssims.append(ssim)
@@ -264,6 +264,7 @@ def test(model, dataset):
 
     print('Beginning evaluation...')
     with torch.no_grad():
+        psnrs, ssims = list(), list()
         for idx, (model_input, ground_truth) in enumerate(dataset):
             if not idx%10:
                 print(idx)
@@ -271,6 +272,13 @@ def test(model, dataset):
             model_outputs = model(model_input)
             model.write_eval(model_outputs, ground_truth, os.path.join(traj_dir, "%06d.png"%idx))
             model.write_comparison(model_outputs, ground_truth, os.path.join(comparison_dir, "%06d.png"%idx))
+
+            psnr, ssim = model.get_psnr(model_outputs, ground_truth)
+            psnrs.append(psnr)
+            ssims.append(ssim)
+
+    print(np.mean(psnrs))
+    print(np.mean(ssims))
 
 
 def main():

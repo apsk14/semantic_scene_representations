@@ -86,12 +86,24 @@ class SRNsModel(nn.Module):
         print("*"*100)
 
     def get_regularization_loss(self, prediction, ground_truth):
+        '''Computes regularization loss on final depth map (L_{depth} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: Regularization loss on final depth map.
+        '''
         _, depth = prediction
 
         neg_penalty = (torch.min(depth, torch.zeros_like(depth)) ** 2)
         return torch.mean(neg_penalty)*10000
 
-    def get_distortion_loss(self, prediction, ground_truth):
+    def get_image_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
         predictions, depths = prediction
         trgt_imgs, trgt_depths = ground_truth
 
@@ -100,7 +112,10 @@ class SRNsModel(nn.Module):
         loss = self.l2_loss(predictions, trgt_imgs)
         return loss
 
-    def get_variational_loss(self):
+    def get_latent_loss(self):
+        '''Computes loss on latent code vectors (L_{latent} in eq. 6 in paper)
+        :return: Latent loss.
+        '''
         if self.mode == 'hyper':
             self.latent_reg_loss = torch.mean(self.embedding**2)
         else:
@@ -259,18 +274,17 @@ class SRNsModel(nn.Module):
     def forward(self, input, embedding=None):
         self.logs = list()
 
-        ray_bundle = Observation(*input)
-
         # Parse model input.
-        obj_idcs = ray_bundle.obj_idx.long().cuda()
-        trgt_pose = ray_bundle.pose.cuda()
-        intrinsics = ray_bundle.intrinsics.cuda()
-        xy = ray_bundle.xy.cuda().float()
+        observation = Observation(*input)
+        obj_idcs = observation.obj_idx.long().cuda()
+        trgt_pose = observation.pose.cuda()
+        intrinsics = observation.intrinsics.cuda()
+        xy = observation.xy.cuda().float()
 
         if self.mode == 'hyper':
             if self.has_params:
                 if embedding is None:
-                    self.embedding = ray_bundle.param.cuda()
+                    self.embedding = observation.param.cuda()
                 else:
                     self.embedding = embedding
             else:
