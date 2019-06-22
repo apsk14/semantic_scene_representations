@@ -69,8 +69,6 @@ class SRNsModel(nn.Module):
                                                              in_features=self.implicit_nf,
                                                              out_features=3,
                                                              outermost_linear=True)
-        else:
-            raise ValueError("Unknown renderer")
 
         self.counter = 0
 

@@ -26,9 +26,13 @@ parser.add_argument('--max_steps', type=int, default=None, help='number of epoch
 parser.add_argument('--lr', type=float, default=5e-5, help='learning rate, default=0.001')
 parser.add_argument('--batch_size', type=int, default=4,
                     help='Training batch size.')
-parser.add_argument('--l1_weight', type=float, default=200, help='learning rate, default=0.001')
-parser.add_argument('--kl_weight', type=float, default=1, help='learning rate, default=0.001')
-parser.add_argument('--reg_weight', type=float, default=1e-3, help='learning rate, default=0.001')
+
+parser.add_argument('--l1_weight', type=float, default=200,
+                    help='learning rate, default=0.001')
+parser.add_argument('--kl_weight', type=float, default=1,
+                    help='learning rate, default=0.001')
+parser.add_argument('--reg_weight', type=float, default=1e-3,
+                    help='Weight for regularization term in paper.')
 
 parser.add_argument('--tracing_steps', type=int, default=10, help='Number of steps of intersection tester')
 
@@ -37,7 +41,7 @@ parser.add_argument('--steps_til_ckpt', type=int, default=10000,
 parser.add_argument('--steps_til_val', type=int, default=1000,
                     help='Number of iterations until validation set is run.')
 parser.add_argument('--no_validation', action='store_true', default=False,
-                    help='If not validation set should be used.')
+                    help='If no validation set should be used.')
 
 parser.add_argument('--img_sidelength', type=int, default=128, required=False,
                     help='Sidelength of training images. If original images are bigger, they\'re downsampled.')
