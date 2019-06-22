@@ -7,7 +7,7 @@ import torchvision
 from custom_layers import *
 import util
 
-from dataio import RayBundle
+from dataio import Observation
 import skimage.measure, skimage.transform
 
 from pytorch_prototyping import pytorch_prototyping
@@ -261,7 +261,7 @@ class SRNsModel(nn.Module):
     def forward(self, input, embedding=None):
         self.logs = list()
 
-        ray_bundle = RayBundle(*input)
+        ray_bundle = Observation(*input)
 
         # Parse model input.
         obj_idcs = ray_bundle.obj_idx.long().cuda()

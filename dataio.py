@@ -4,10 +4,9 @@ import numpy as np
 from glob import glob
 import data_util
 import util
-import cv2
 
 from collections import namedtuple
-RayBundle = namedtuple('ray_bundle', 'obj_idx rgb depth xy pose intrinsics param')
+Observation = namedtuple('ray_bundle', 'obj_idx rgb depth xy pose intrinsics param')
 
 class Preloader():
     def __init__(self, paths, load_to_ram, loading_function):
@@ -37,7 +36,7 @@ def pick(list, item_idcs):
     return [list[i] for i in item_idcs]
 
 
-class ObjectImgDataset():
+class ObjectInstanceDataset():
     def __init__(self,
                  obj_idx,
                  object_dir,
@@ -125,16 +124,16 @@ class ObjectImgDataset():
         rgbs = self.rgbs[idx].reshape(3, -1).transpose(1,0)
         depths = depth.reshape(-1, 1)
 
-        return RayBundle(obj_idx=torch.Tensor([self.obj_idx]).squeeze(),
-                         rgb=torch.from_numpy(rgbs).float(),
-                         pose=torch.from_numpy(self.poses[idx]).float(),
-                         depth=torch.from_numpy(depths).float(),
-                         xy=xy,
-                         param=torch.from_numpy(self.params[idx]).float() if self.has_params else torch.Tensor([0]).float(),
-                         intrinsics=self.intrinsics)
+        return Observation(obj_idx=torch.Tensor([self.obj_idx]).squeeze(),
+                           rgb=torch.from_numpy(rgbs).float(),
+                           pose=torch.from_numpy(self.poses[idx]).float(),
+                           depth=torch.from_numpy(depths).float(),
+                           xy=xy,
+                           param=torch.from_numpy(self.params[idx]).float() if self.has_params else torch.Tensor([0]).float(),
+                           intrinsics=self.intrinsics)
 
 
-class RayBundleDataset():
+class ObjectClassDataset():
     def __init__(self,
                  root_dir,
                  preload=True,
@@ -155,11 +154,11 @@ class RayBundleDataset():
         if num_objects != -1:
             self.object_dirs = self.object_dirs[:num_objects]
 
-        self.all_objs = [ObjectImgDataset(obj_idx=obj_idx,
-                                          object_dir=obj_dir,
-                                          load_to_ram=preload,
-                                          img_sidelength=img_sidelength,
-                                          num_images=num_images)
+        self.all_objs = [ObjectInstanceDataset(obj_idx=obj_idx,
+                                               object_dir=obj_dir,
+                                               load_to_ram=preload,
+                                               img_sidelength=img_sidelength,
+                                               num_images=num_images)
                          for obj_idx, obj_dir in enumerate(self.object_dirs)]
 
         self.all_obj_lens = [len(obj) for obj in self.all_objs]
@@ -178,7 +177,6 @@ class RayBundleDataset():
             obj_idx += 1
         return obj_idx - 1, int(idx + self.all_obj_lens[obj_idx-1])
 
-
     def collate_fn(self, batch_list):
         model_inputs, trgts = zip(*batch_list)
 
@@ -195,7 +193,7 @@ class RayBundleDataset():
             for j in range(num_input_members):
                 all_input_members[j].append(flat_inputs[i][j])
 
-        model_inputs = RayBundle(*tuple(torch.stack(all_input_members[j],dim=0) for j in range(num_input_members)))
+        model_inputs = Observation(*tuple(torch.stack(all_input_members[j], dim=0) for j in range(num_input_members)))
 
         # Flatten the list of lists of targets
         num_trgt_members = len(trgts[0])
@@ -209,7 +207,6 @@ class RayBundleDataset():
 
         return model_inputs, model_trgts
 
-
     def __getitem__(self, idx):
         obj_idx, rel_idx = self.get_obj_idx(idx)
 
@@ -219,4 +216,5 @@ class RayBundleDataset():
         for i in range(self.samples_per_object-1):
             ray_bundles.append(self.all_objs[obj_idx][np.random.randint(len(self.all_objs[obj_idx]))])
 
-        return ray_bundles, ([ray_bundle.rgb for ray_bundle in ray_bundles], [ray_bundle.depth for ray_bundle in ray_bundles])
+        return ray_bundles, ([ray_bundle.rgb for ray_bundle in ray_bundles],
+                             [ray_bundle.depth for ray_bundle in ray_bundles])
