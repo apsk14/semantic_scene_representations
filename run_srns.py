@@ -24,44 +24,53 @@ parser.add_argument('--logging_root', type=str, default='/media/staging/deep_sfm
 parser.add_argument('--max_epoch', type=int, default=1501, help='number of epochs to train for')
 parser.add_argument('--max_steps', type=int, default=None, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=5e-5, help='learning rate, default=0.001')
+parser.add_argument('--batch_size', type=int, default=4,
+                    help='Training batch size.')
 parser.add_argument('--l1_weight', type=float, default=200, help='learning rate, default=0.001')
 parser.add_argument('--kl_weight', type=float, default=1, help='learning rate, default=0.001')
 parser.add_argument('--reg_weight', type=float, default=1e-3, help='learning rate, default=0.001')
 
 parser.add_argument('--tracing_steps', type=int, default=10, help='Number of steps of intersection tester')
 
-parser.add_argument('--steps_til_ckpt', type=int, default=10000, help='number of epochs to train for')
-parser.add_argument('--steps_til_val', type=int, default=1000, help='number of epochs to train for')
-parser.add_argument('--no_validation', action='store_true', default=False, help='#images')
+parser.add_argument('--steps_til_ckpt', type=int, default=10000,
+                    help='Number of iterations until checkpoint is saved.')
+parser.add_argument('--steps_til_val', type=int, default=1000,
+                    help='Number of iterations until validation set is run.')
+parser.add_argument('--no_validation', action='store_true', default=False,
+                    help='If not validation set should be used.')
 
-# model params
-parser.add_argument('--img_sidelength', type=int, default=128, required=False, help='start epoch')
-
-parser.add_argument('--num_val_objects', type=int, default=10, required=False, help='start epoch')
-parser.add_argument('--num_val_images', type=int, default=10, required=False, help='start epoch')
-parser.add_argument('--num_images', type=int, default=-1, required=False, help='start epoch')
-parser.add_argument('--embedding_size', type=int, required=True, help='start epoch')
+parser.add_argument('--img_sidelength', type=int, default=128, required=False,
+                    help='Sidelength of training images. If original images are bigger, they\'re downsampled.')
 parser.add_argument('--mode', type=str, required=True, help='#images')
 
-parser.add_argument('--overwrite_embeddings', action='store_true', default=False,
-                    help='When loading from checkpoint: Whether to discard checkpoint embeddings and initialize at random.')
 parser.add_argument('--no_preloading', action='store_true', default=False,
                     help='Whether to preload data to RAM.')
-parser.add_argument('--num_objects', type=int, default=-1,
-                    help='Number of scene instances to consider from training set.')
+
+parser.add_argument('--max_num_instances_train', type=int, default=-1,
+                    help='If \'train_root\' has more instances, only the first max_num_instances_train are used')
+parser.add_argument('--max_num_observations_train', type=int, default=50, required=False,
+                    help='If an instance has more observations, only the first max_num_observations_train are used')
+parser.add_argument('--max_num_instances_val', type=int, default=10, required=False,
+                    help='If \'val_root\' has more instances, only the first max_num_instances_val are used')
+parser.add_argument('--max_num_observations_val', type=int, default=10, required=False,
+                    help='Maximum numbers of observations per validation instance')
+
 parser.add_argument('--has_params', action='store_true', default=False,
                     help='Whether each object instance already comes with its own parameter vector.')
 
-# For retraining
-parser.add_argument('--checkpoint', default=None, help='Checkpoint to trained model.')
+parser.add_argument('--checkpoint', default=None,
+                    help='Checkpoint to trained model.')
+parser.add_argument('--overwrite_embeddings', action='store_true', default=False,
+                    help='When loading from checkpoint: Whether to discard checkpoint embeddings and initialize at random.')
 parser.add_argument('--start_step', type=int, default=0,
                     help='If continuing from checkpoint, which iteration to start counting at.')
-parser.add_argument('--batch_size', type=int, default=4, help='Training batch size.')
+
 parser.add_argument('--use_unet_renderer', action='store_true',
                     help='Whether to use a DeepVoxels-style unet as rendering network or a per-pixel 1x1 convnet')
-
-# 2d/3d
-parser.add_argument('--implicit_nf', type=int, default=256, help='start epoch')
+parser.add_argument('--implicit_nf', type=int, default=256,
+                    help='Number of hidden units in SRN')
+parser.add_argument('--embedding_size', type=int, required=True,
+                    help='Dimensionality of latent embedding.')
 
 
 opt = parser.parse_args()
@@ -264,16 +273,16 @@ def main():
     if opt.train_test == 'train':
         dataset = ObjectClassDataset(root_dir=opt.data_root,
                                      preload=not opt.no_preloading,
-                                     num_objects=opt.num_objects,
-                                     num_images=opt.num_images,
+                                     max_num_instances=opt.num_train_instances,
+                                     max_observations_per_instance=opt.num_images,
                                      img_sidelength=opt.img_sidelength,
                                      samples_per_object=1)
 
         if not opt.no_validation:
             val_dataset = ObjectClassDataset(root_dir=opt.val_root,
                                              preload=not opt.no_preloading,
-                                             num_objects=opt.num_val_objects,
-                                             num_images=opt.num_val_images,
+                                             max_num_instances=opt.num_val_instances,
+                                             max_observations_per_instance=opt.num_val_images,
                                              img_sidelength=opt.img_sidelength,
                                              samples_per_object=1)
         else:
@@ -284,23 +293,22 @@ def main():
                           implicit_nf=opt.implicit_nf,
                           has_params=opt.has_params,
                           mode=opt.mode,
-                          renderer=opt.renderer,
-                          depth_supervision=opt.depth_supervision,
+                          use_unet_renderer=opt.use_unet_renderer,
                           tracing_steps=opt.tracing_steps)
         train(model, dataset, val_dataset)
     elif opt.train_test == 'test':
         dataset = ObjectClassDataset(root_dir=opt.data_root,
                                      preload=not opt.no_preloading,
-                                     num_objects=opt.num_objects,
-                                     num_images=-1,
+                                     max_num_instances=opt.num_objects,
+                                     max_observations_per_instance=-1,
                                      samples_per_object=1,
                                      img_sidelength=opt.img_sidelength)
         model = SRNsModel(num_objects=dataset.num_obj,
                           embedding_size=opt.embedding_size,
                           implicit_nf=opt.implicit_nf,
                           has_params=opt.has_params,
-                          renderer=opt.renderer,
                           mode=opt.mode,
+                          use_unet_renderer=opt.use_unet_renderer,
                           tracing_steps=opt.tracing_steps)
         test(model, dataset)
     else:

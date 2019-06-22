@@ -138,8 +138,8 @@ class ObjectClassDataset():
                  root_dir,
                  preload=True,
                  img_sidelength=None,
-                 num_objects=-1,
-                 num_images=-1,
+                 max_num_instances=-1,
+                 max_observations_per_instance=-1,
                  samples_per_object=2):
         super().__init__()
 
@@ -151,14 +151,14 @@ class ObjectClassDataset():
 
         assert (self.num_obj !=0), "No objects in the data directory"
 
-        if num_objects != -1:
-            self.object_dirs = self.object_dirs[:num_objects]
+        if max_num_instances != -1:
+            self.object_dirs = self.object_dirs[:max_num_instances]
 
         self.all_objs = [ObjectInstanceDataset(obj_idx=obj_idx,
                                                object_dir=obj_dir,
                                                load_to_ram=preload,
                                                img_sidelength=img_sidelength,
-                                               num_images=num_images)
+                                               num_images=max_observations_per_instance)
                          for obj_idx, obj_dir in enumerate(self.object_dirs)]
 
         self.all_obj_lens = [len(obj) for obj in self.all_objs]
