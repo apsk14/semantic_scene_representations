@@ -265,7 +265,6 @@ class SRNsModel(nn.Module):
 
         # Parse model input.
         obj_idcs = ray_bundle.obj_idx.long().cuda()
-        gt_depth = ray_bundle.depth.cuda()
         trgt_pose = ray_bundle.pose.cuda()
         intrinsics = ray_bundle.intrinsics.cuda()
         xy = ray_bundle.xy.cuda().float()
@@ -278,6 +277,7 @@ class SRNsModel(nn.Module):
                     self.embedding = embedding
             else:
                 self.embedding = self.obj_embedding(obj_idcs)
+
             phi = self.hyper_phi(self.embedding)
         elif self.mode == 'single':
             phi = self.phi

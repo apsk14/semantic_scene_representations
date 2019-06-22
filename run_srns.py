@@ -265,10 +265,8 @@ def main():
                                    preload=not opt.no_preloading,
                                    num_objects=opt.num_objects,
                                    num_images=opt.num_images,
-                                   num_samples=-1,
                                    img_sidelength=opt.img_sidelength,
-                                   samples_per_object=1,
-                                   mode='val')
+                                   samples_per_object=1)
 
         if not opt.no_validation:
             val_dataset = RayBundleDataset(root_dir=opt.val_root,
@@ -276,9 +274,7 @@ def main():
                                            num_objects=opt.num_val_objects,
                                            num_images=opt.num_val_images,
                                            img_sidelength=opt.img_sidelength,
-                                           num_samples=-1,
-                                           samples_per_object=1,
-                                           mode='val')
+                                           samples_per_object=1)
         else:
             val_dataset = None
 
@@ -296,10 +292,8 @@ def main():
                                    preload=not opt.no_preloading,
                                    num_objects=opt.num_objects,
                                    num_images=-1,
-                                   num_samples=-1,
                                    samples_per_object=1,
-                                   img_sidelength=opt.img_sidelength,
-                                   mode='val')
+                                   img_sidelength=opt.img_sidelength)
         model = SRNsModel(num_objects=dataset.num_obj,
                           embedding_size=opt.embedding_size,
                           implicit_nf=opt.implicit_nf,
