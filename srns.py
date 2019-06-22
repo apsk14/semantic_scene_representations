@@ -8,16 +8,12 @@ from custom_layers import *
 import util
 
 from dataio import RayBundle
+import skimage.measure, skimage.transform
 
 from pytorch_prototyping import pytorch_prototyping
 import hyperlayers
 
-import skimage.measure, skimage.transform
 
-from losses import *
-
-
-# noinspection PyCallingNonCallable
 class SRNsModel(nn.Module):
     def __init__(self,
                  num_objects,
@@ -27,14 +23,11 @@ class SRNsModel(nn.Module):
                  has_params=False,
                  mode='hyper',
                  renderer='fc',
-                 depth_supervision=False,
-                 orthographic=False,
-                 use_gt_depth=False):
+                 depth_supervision=False):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.has_params = has_params
-        self.use_gt_depth = use_gt_depth
         self.depth_supervision = depth_supervision
 
         self.mode = mode
@@ -45,6 +38,7 @@ class SRNsModel(nn.Module):
         self.sphere_trace_steps = tracing_steps
 
         if mode=='hyper':
+            # Auto-decoder: each scene instance gets its own code vector
             self.obj_embedding = nn.Embedding(num_objects, embedding_size).cuda()
             nn.init.normal_(self.obj_embedding.weight, mean=0, std=0.01)
 
@@ -55,15 +49,16 @@ class SRNsModel(nn.Module):
                                                  num_hidden_layers=self.phi_layers-2,
                                                  in_ch=3,
                                                  out_ch=self.implicit_nf)
-        elif mode == 'single':
+        elif mode == 'single': # Fit a single scene with a single SRN (no hypernetworks)
             self.phi = pytorch_prototyping.FCBlock(hidden_ch=implicit_nf,
                                                    num_hidden_layers=self.phi_layers-2,
                                                    in_features=3,
                                                    out_features=self.implicit_nf)
+        else:
+            raise ValueError("Unknown SRN mode")
 
         self.intersection_net = RaycasterNet(n_grid_feats=self.implicit_nf,
-                                             raycast_steps=self.sphere_trace_steps,
-                                             orthographic=orthographic)
+                                             raycast_steps=self.sphere_trace_steps)
 
         if renderer == 'fc':
             self.rendering_net = pytorch_prototyping.FCBlock(hidden_ch=self.implicit_nf,
@@ -92,31 +87,11 @@ class SRNsModel(nn.Module):
         util.print_network(self)
         print("*"*100)
 
-
     def get_regularization_loss(self, prediction, ground_truth):
         _, depth = prediction
 
         neg_penalty = (torch.min(depth, torch.zeros_like(depth)) ** 2)
-
         return torch.mean(neg_penalty)*10000
-
-
-    def get_proxy_losses(self, prediction, ground_truth):
-        _, depths = prediction
-        trgt_imgs, trgt_depths = ground_truth
-
-        trgt_depths = trgt_depths.cuda()
-
-        if self.depth_supervision:
-            loss = (depths - trgt_depths)**2
-            loss[trgt_depths==1] = 0.
-            loss[trgt_depths==0] = 0.
-            loss = loss.mean()
-        else:
-            loss = 0.
-
-        return loss
-
 
     def get_distortion_loss(self, prediction, ground_truth):
         predictions, depths = prediction
@@ -127,7 +102,6 @@ class SRNsModel(nn.Module):
         loss = self.l2_loss(predictions, trgt_imgs)
         return loss
 
-
     def get_variational_loss(self):
         if self.mode == 'hyper':
             self.latent_reg_loss = torch.mean(self.embedding**2)
@@ -135,19 +109,6 @@ class SRNsModel(nn.Module):
             self.latent_reg_loss = 0
 
         return self.latent_reg_loss
-
-
-    def prep_for_gan(self, prediction, ground_truth):
-        predictions, _ = prediction
-        trgt_imgs, _ = ground_truth
-
-        trgt_imgs = trgt_imgs.cuda()
-
-        predictions = util.lin2img(predictions)
-        trgt_imgs = util.lin2img(trgt_imgs)
-
-        return predictions, trgt_imgs
-
 
     def get_psnr(self, prediction, ground_truth):
         predictions, depth_maps = prediction
@@ -182,7 +143,6 @@ class SRNsModel(nn.Module):
 
         return np.mean(psnrs), np.mean(ssims)
 
-
     def write_comparison(self, prediction, ground_truth, path, plot_ground_truth=False):
         predictions, depth_maps = prediction
         trgt_imgs, trgt_depths = ground_truth
@@ -197,7 +157,6 @@ class SRNsModel(nn.Module):
         pred = util.convert_image(predictions)
 
         depth_img = depth_maps.squeeze()[:,:,None].cpu().numpy()
-        # depth_img[depth_img>1.9] = 1.9
         depth_img = (depth_img - np.amin(depth_img)) / (np.amax(depth_img) - np.amin(depth_img))
         depth_img *= 2**8 - 1
         depth_img = depth_img.round()
@@ -210,13 +169,11 @@ class SRNsModel(nn.Module):
             output = np.concatenate((depth_img, pred), axis=1)
         util.write_img(output, path)
 
-
     def write_eval(self, prediction, ground_truth, path):
         predictions, depth_maps = prediction
         predictions = util.lin2img(predictions)
         pred = util.convert_image(predictions)
         util.write_img(pred, path)
-
 
     def write_updates(self, writer, predictions, ground_truth, iter, prefix=''):
         predictions, depth_maps = predictions
@@ -328,18 +285,11 @@ class SRNsModel(nn.Module):
         if not self.counter and self.training:
             print(phi)
 
-        if self.use_gt_depth:
-            points_xyz, depth_maps = self.depth_sampler(cam2world=trgt_pose,
-                                                        depth=gt_depth,
-                                                        intrinsics=intrinsics,
-                                                        intersection_net=phi,
-                                                        xy=xy)
-        else:
-            points_xyz, depth_maps, log = self.intersection_net(cam2world=trgt_pose,
-                                                                intrinsics=intrinsics,
-                                                                xy=xy,
-                                                                feature_net=phi)
-            self.logs.extend(log)
+        points_xyz, depth_maps, log = self.intersection_net(cam2world=trgt_pose,
+                                                            intrinsics=intrinsics,
+                                                            xy=xy,
+                                                            feature_net=phi)
+        self.logs.extend(log)
 
         feats = phi(points_xyz) # feats: (batch, num_samples, num_grid_feats)
         novel_views = self.rendering_net(feats)

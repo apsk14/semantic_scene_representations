@@ -15,23 +15,6 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-
-
-class LinearSchedule():
-    def __init__(self,
-                 begin,
-                 end,
-                 num_steps):
-        self.num_steps = num_steps
-        self.values = np.linspace(begin, end, num=num_steps+1)
-
-    def __getitem__(self, idx):
-        if idx < self.num_steps:
-            return self.values[idx]
-        else:
-            return self.values[-1]
-
-
 def convert_image(img):
     img = np.array(img[0].squeeze().cpu().detach().numpy())
     img = img.transpose(1,2,0)

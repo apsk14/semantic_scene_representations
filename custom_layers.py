@@ -1,6 +1,71 @@
-import line_parameterizations
 import geometry
 import torchvision
+import util
+
+from pytorch_prototyping import pytorch_prototyping
+
+import torch
+from torch import nn
+
+def init_recurrent_weights(self):
+    for m in self.modules():
+        if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
+            for name, param in m.named_parameters():
+                if 'weight_ih' in name:
+                    nn.init.kaiming_normal_(param.data)
+                elif 'weight_hh' in name:
+                    nn.init.orthogonal_(param.data)
+                elif 'bias' in name:
+                    param.data.fill_(0)
+
+def lstm_forget_gate_init(lstm_layer):
+    for name, parameter in lstm_layer.named_parameters():
+        if not "bias" in name: continue
+        n = parameter.size(0)
+        start, end = n // 4, n // 2
+        parameter.data[start:end].fill_(1.)
+
+
+def clip_grad_norm_hook(x, max_norm=10):
+    total_norm = x.norm()
+    total_norm = total_norm ** (1/2.)
+    clip_coef = max_norm / (total_norm + 1e-6)
+    if clip_coef < 1:
+        return x * clip_coef
+
+
+class RecurrentSignedDistancePointPredictor(nn.Module):
+    def __init__(self, in_ch):
+        super().__init__()
+
+        hidden_size = 16
+        self.in_ch = in_ch
+
+        self.rnn = nn.LSTMCell(input_size=in_ch,
+                               hidden_size=hidden_size)
+
+        self.rnn.apply(init_recurrent_weights)
+        lstm_forget_gate_init(self.rnn)
+
+        self.out_layer = nn.Linear(hidden_size, 1)
+
+    def forward(self, features, line_direction, point_on_line, prev_state=None):
+        batch_size, num_points, num_feats = features.shape
+
+        state = self.rnn(features.view(-1, num_feats), prev_state)
+
+        if state[0].requires_grad:
+            state[0].register_hook(lambda x: x.clamp(min=-10, max=10))
+
+        signed_distance = self.out_layer(state[0]).view(batch_size, num_points, 1)
+
+        pred_points = line_from_signed_distance_to_point(signed_distance, line_direction, point_on_line)
+
+        return pred_points, state, signed_distance
+
+
+def line_from_signed_distance_to_point(distance, line_direction, point_on_line):
+    return point_on_line + line_direction * distance
 
 
 class DepthSampler(nn.Module):
@@ -28,21 +93,13 @@ class DepthSampler(nn.Module):
 class RaycasterNet(nn.Module):
     def __init__(self,
                  n_grid_feats,
-                 raycast_steps,
-                 orthographic=False):
+                 raycast_steps):
         super().__init__()
 
         self.n_grid_feats = n_grid_feats
         self.steps = raycast_steps
-        self.orthographic = orthographic
 
-        if self.orthographic:
-            print("*"*100)
-            print("Using an orthographic camera model")
-            print("*"*100)
-
-        self.step_predictor = line_parameterizations.RecurrentSignedDistancePointPredictor(in_ch=self.n_grid_feats,
-                                                                                           rnn_type='lstm')
+        self.step_predictor = RecurrentSignedDistancePointPredictor(in_ch=self.n_grid_feats)
         self.counter = 0
 
     def forward(self,
@@ -52,10 +109,7 @@ class RaycasterNet(nn.Module):
                 intrinsics):
         batch_size, num_samples, _ = xy.shape
 
-        if self.orthographic:
-            ray_dirs = -1. * cam2world[:,:3,2][:,None,:].repeat(1, num_samples, 1)
-        else:
-            ray_dirs = geometry.get_ray_directions(xy, cam2world=cam2world, intrinsics=intrinsics)
+        ray_dirs = geometry.get_ray_directions(xy, cam2world=cam2world, intrinsics=intrinsics)
 
         initial_depth = torch.ones((batch_size, num_samples, 1)).fill_(0.05).cuda()
         init_world_coords = geometry.world_from_xy_depth(xy, initial_depth, intrinsics=intrinsics, cam2world=cam2world)
@@ -121,7 +175,7 @@ class DeepvoxelsRenderer(nn.Module):
 
     def build_net(self):
         self.net = [
-            Unet(in_channels=self.in_channels,
+            pytorch_prototyping.Unet(in_channels=self.in_channels,
                  out_channels=3 if self.num_upsampling <= 0 else 4*self.nf0,
                  outermost_linear=True if self.num_upsampling <= 0 else False,
                  use_dropout=True,
@@ -134,15 +188,15 @@ class DeepvoxelsRenderer(nn.Module):
 
         if self.num_upsampling > 0:
             self.net += [
-                UpsamplingNet(per_layer_out_ch=self.num_upsampling * [self.nf0],
+                pytorch_prototyping.UpsamplingNet(per_layer_out_ch=self.num_upsampling * [self.nf0],
                               in_channels=4 * self.nf0,
                               upsampling_mode='transpose',
                               use_dropout=True,
                               dropout_prob=0.1),
-                Conv2dSame(self.nf0, out_channels=self.nf0 // 2, kernel_size=3, bias=False),
+                pytorch_prototyping.Conv2dSame(self.nf0, out_channels=self.nf0 // 2, kernel_size=3, bias=False),
                 nn.BatchNorm2d(self.nf0 // 2),
                 nn.ReLU(True),
-                Conv2dSame(self.nf0//2, 3, kernel_size=3)
+                pytorch_prototyping.Conv2dSame(self.nf0//2, 3, kernel_size=3)
             ]
 
         self.net += [nn.Tanh()]
