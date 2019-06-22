@@ -24,7 +24,7 @@ The code is organized as follows:
 * run_srns.py contains the training and testing code as well as setting up the dataset, dataloading, command line arguments etc.
 * srns.py contains the core SRNs model.
 * custom_layers.py contains implementations of the integration and occlusion submodules.
-* projection.py contains utility functions for 3D and projective geometry.
+* geometry.py contains utility functions for 3D and projective geometry.
 
 ### Data:
 The datasets have been rendered from a set of high-quality 3D scans of Shapenet v2 chairs and car classes.
@@ -34,18 +34,18 @@ The datasets have been rendered from a set of high-quality 3D scans of Shapenet 
 Example train call:
 ```
 python run_srns.py --train_test train \
-                         --data_root [path to directory with dataset] \
-                         --logging_root [path to directory where tensorboard summaries and checkpoints should be written to] 
+                   --data_root [path to directory with dataset] \
+                   --logging_root [path to directory where tensorboard summaries and checkpoints should be written to] 
 ```
 To monitor progress, the training code writes tensorboard summaries every 100 steps into a "runs" subdirectory in the logging_root.
 
 ### Testing
 Example test call:
 ```
-python run_deepvoxels.py --train_test test \
-                         --data_root [path to directory with dataset] ]
-                         --logging_root [path to directoy where test output should be written to] \
-                         --checkpoint [path to checkpoint]
+python run_srns.py --train_test test \
+                   --data_root [path to directory with dataset] ]
+                   --logging_root [path to directoy where test output should be written to] \
+                   --checkpoint [path to checkpoint]
 ```
 
 ## Misc

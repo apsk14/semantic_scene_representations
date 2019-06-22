@@ -8,7 +8,3 @@ python ../run_srns.py --train_test train \
                       --logging_root /home/sitzmann/data/deep_space/logging/ \
                       --img_sidelength 64 \
                       --batch_size 128 \
-                      --lr 5e-5 \
-                      --reg_weight 1.e-3 \
-                      --no_validation \
-                      --steps_til_ckpt 5000 \

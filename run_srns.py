@@ -24,7 +24,7 @@ parser.add_argument('--logging_root', type=str, default='/media/staging/deep_sfm
 parser.add_argument('--max_epoch', type=int, default=1501, help='number of epochs to train for')
 parser.add_argument('--max_steps', type=int, default=None, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=5e-5, help='learning rate, default=0.001')
-parser.add_argument('--batch_size', type=int, default=4,
+parser.add_argument('--batch_size', type=int, default=32,
                     help='Training batch size.')
 
 parser.add_argument('--l1_weight', type=float, default=200,
@@ -36,7 +36,7 @@ parser.add_argument('--reg_weight', type=float, default=1e-3,
 
 parser.add_argument('--tracing_steps', type=int, default=10, help='Number of steps of intersection tester')
 
-parser.add_argument('--steps_til_ckpt', type=int, default=10000,
+parser.add_argument('--steps_til_ckpt', type=int, default=5000,
                     help='Number of iterations until checkpoint is saved.')
 parser.add_argument('--steps_til_val', type=int, default=1000,
                     help='Number of iterations until validation set is run.')
