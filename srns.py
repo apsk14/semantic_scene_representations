@@ -22,7 +22,7 @@ class SRNsModel(nn.Module):
                  tracing_steps,
                  has_params=False,
                  mode='hyper',
-                 renderer='fc',
+                 use_unet_renderer=False,
                  depth_supervision=False):
         super().__init__()
 
@@ -60,15 +60,15 @@ class SRNsModel(nn.Module):
         self.intersection_net = RaycasterNet(n_grid_feats=self.implicit_nf,
                                              raycast_steps=self.sphere_trace_steps)
 
-        if renderer == 'fc':
+        if use_unet_renderer:
+            self.rendering_net = DeepvoxelsRenderer(nf0=32, in_channels=implicit_nf,
+                                                    input_resolution=128, img_sidelength=128)
+        else:
             self.rendering_net = pytorch_prototyping.FCBlock(hidden_ch=self.implicit_nf,
                                                              num_hidden_layers=self.rendering_layers-1,
                                                              in_features=self.implicit_nf,
                                                              out_features=3,
                                                              outermost_linear=True)
-        elif renderer == 'conv':
-            self.rendering_net = DeepvoxelsRenderer(nf0=32, in_channels=implicit_nf,
-                                                    input_resolution=128, img_sidelength=128)
         else:
             raise ValueError("Unknown renderer")
 

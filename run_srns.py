@@ -43,18 +43,22 @@ parser.add_argument('--num_images', type=int, default=-1, required=False, help='
 parser.add_argument('--embedding_size', type=int, required=True, help='start epoch')
 parser.add_argument('--mode', type=str, required=True, help='#images')
 
-parser.add_argument('--dir_name', type=str, default=None, required=False, help='#images')
-
-parser.add_argument('--overwrite_embeddings', action='store_true', default=False, help='#images')
-parser.add_argument('--no_preloading', action='store_true', default=False, help='#images')
-parser.add_argument('--num_objects', type=int, default=-1, help='start epoch')
-parser.add_argument('--has_params', action='store_true', default=False, help='start epoch')
+parser.add_argument('--overwrite_embeddings', action='store_true', default=False,
+                    help='When loading from checkpoint: Whether to discard checkpoint embeddings and initialize at random.')
+parser.add_argument('--no_preloading', action='store_true', default=False,
+                    help='Whether to preload data to RAM.')
+parser.add_argument('--num_objects', type=int, default=-1,
+                    help='Number of scene instances to consider from training set.')
+parser.add_argument('--has_params', action='store_true', default=False,
+                    help='Whether each object instance already comes with its own parameter vector.')
 
 # For retraining
-parser.add_argument('--checkpoint', default=None, help='model to load')
-parser.add_argument('--start_step', type=int, default=0, help='start step')
-parser.add_argument('--batch_size', type=int, default=4, help='start epoch')
-parser.add_argument('--renderer', type=str, default='fc', help='start epoch')
+parser.add_argument('--checkpoint', default=None, help='Checkpoint to trained model.')
+parser.add_argument('--start_step', type=int, default=0,
+                    help='If continuing from checkpoint, which iteration to start counting at.')
+parser.add_argument('--batch_size', type=int, default=4, help='Training batch size.')
+parser.add_argument('--use_unet_renderer', action='store_true',
+                    help='Whether to use a DeepVoxels-style unet as rendering network or a per-pixel 1x1 convnet')
 
 # 2d/3d
 parser.add_argument('--implicit_nf', type=int, default=256, help='start epoch')
@@ -84,11 +88,8 @@ def train(model, dataset, val_dataset):
     model.train()
     model.cuda()
 
-    if opt.dir_name is None:
-        dir_name = os.path.join(datetime.datetime.now().strftime('%m_%d'),
-                                datetime.datetime.now().strftime('%H-%M-%S_'))
-    else:
-        dir_name = opt.dir_name
+    dir_name = os.path.join(datetime.datetime.now().strftime('%m_%d'),
+                            datetime.datetime.now().strftime('%H-%M-%S_'))
 
     log_dir = os.path.join(opt.logging_root, 'logs', dir_name)
     run_dir = os.path.join(opt.logging_root, 'runs', dir_name)
