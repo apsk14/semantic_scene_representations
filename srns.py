@@ -104,12 +104,12 @@ class SRNsModel(nn.Module):
         :param ground_truth: Ground-truth (unused).
         :return: image reconstruction loss.
         '''
-        predictions, depths = prediction
-        trgt_imgs, trgt_depths = ground_truth
+        pred_imgs, _ = prediction
+        trgt_imgs, _ = ground_truth
 
         trgt_imgs = trgt_imgs.cuda()
 
-        loss = self.l2_loss(predictions, trgt_imgs)
+        loss = self.l2_loss(pred_imgs, trgt_imgs)
         return loss
 
     def get_latent_loss(self):
@@ -124,18 +124,18 @@ class SRNsModel(nn.Module):
         return self.latent_reg_loss
 
     def get_psnr(self, prediction, ground_truth):
-        predictions, depth_maps = prediction
-        trgt_imgs, trgt_depths = ground_truth
+        pred_imgs, _ = prediction
+        trgt_imgs, _ = ground_truth
 
         trgt_imgs = trgt_imgs.cuda()
-        batch_size = predictions.shape[0]
+        batch_size = pred_imgs.shape[0]
 
-        predictions = util.lin2img(predictions)
+        pred_imgs = util.lin2img(pred_imgs)
         trgt_imgs = util.lin2img(trgt_imgs)
 
         psnrs, ssims = list(), list()
         for i in range(batch_size):
-            p = predictions[i,:,5:-5,5:-5].squeeze().permute(1,2,0).detach().cpu()
+            p = pred_imgs[i,:,5:-5,5:-5].squeeze().permute(1,2,0).detach().cpu()
             trgt = trgt_imgs[i,:,5:-5,5:-5].squeeze().permute(1,2,0).detach().cpu()
 
             p /= 2.
@@ -157,17 +157,17 @@ class SRNsModel(nn.Module):
         return np.mean(psnrs), np.mean(ssims)
 
     def write_comparison(self, prediction, ground_truth, path, plot_ground_truth=False):
-        predictions, depth_maps = prediction
-        trgt_imgs, trgt_depths = ground_truth
+        pred_imgs, pred_depth_maps = prediction
+        trgt_imgs, _ = ground_truth
 
         trgt_imgs = trgt_imgs.cuda()
 
-        predictions = util.lin2img(predictions)
+        pred_imgs = util.lin2img(pred_imgs)
         trgt_imgs = util.lin2img(trgt_imgs)
-        depth_maps = util.lin2img(depth_maps)
+        depth_maps = util.lin2img(pred_depth_maps)
 
         gt = util.convert_image(trgt_imgs)
-        pred = util.convert_image(predictions)
+        pred = util.convert_image(pred_imgs)
 
         depth_img = depth_maps.squeeze()[:,:,None].cpu().numpy()
         depth_img = (depth_img - np.amin(depth_img)) / (np.amax(depth_img) - np.amin(depth_img))
@@ -271,22 +271,22 @@ class SRNsModel(nn.Module):
             writer.add_scalar(prefix + "latent_reg_loss", self.latent_reg_loss, iter)
 
 
-    def forward(self, input, embedding=None):
+    def forward(self, input, z=None):
         self.logs = list()
 
         # Parse model input.
         observation = Observation(*input)
-        instance_idcs = observation.obj_idx.long().cuda()
+        instance_idcs = observation.instance_idx.long().cuda()
         pose = observation.pose.cuda()
         intrinsics = observation.intrinsics.cuda()
         xy = observation.xy.cuda().float()
 
         if self.mode == 'hyper':
             if self.has_params:
-                if embedding is None:
+                if z is None:
                     self.z = observation.param.cuda()
                 else:
-                    self.z = embedding
+                    self.z = z
             else:
                 self.z = self.latent_codes(instance_idcs)
 
