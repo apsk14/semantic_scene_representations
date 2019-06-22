@@ -45,7 +45,8 @@ parser.add_argument('--no_validation', action='store_true', default=False,
 
 parser.add_argument('--img_sidelength', type=int, default=128, required=False,
                     help='Sidelength of training images. If original images are bigger, they\'re downsampled.')
-parser.add_argument('--mode', type=str, required=True, help='#images')
+parser.add_argument('--fit_single_srn', action='store_true', required=False,
+                    help='Only fit a single SRN for a single scene (not a class of SRNs) --> no hypernetwork')
 
 parser.add_argument('--no_preloading', action='store_true', default=False,
                     help='Whether to preload data to RAM.')
@@ -73,7 +74,7 @@ parser.add_argument('--use_unet_renderer', action='store_true',
                     help='Whether to use a DeepVoxels-style unet as rendering network or a per-pixel 1x1 convnet')
 parser.add_argument('--implicit_nf', type=int, default=256,
                     help='Number of hidden units in SRN')
-parser.add_argument('--embedding_size', type=int, required=True,
+parser.add_argument('--embedding_size', type=int, default=256,
                     help='Dimensionality of latent embedding.')
 
 
@@ -304,7 +305,7 @@ def main():
                           embedding_size=opt.embedding_size,
                           implicit_nf=opt.implicit_nf,
                           has_params=opt.has_params,
-                          mode=opt.mode,
+                          fit_single_srn=opt.fit_single_srn,
                           use_unet_renderer=opt.use_unet_renderer,
                           tracing_steps=opt.tracing_steps)
         train(model, dataset, val_dataset)
@@ -319,7 +320,7 @@ def main():
                           embedding_size=opt.embedding_size,
                           implicit_nf=opt.implicit_nf,
                           has_params=opt.has_params,
-                          mode=opt.mode,
+                          fit_single_srn=opt.fit_single_srn,
                           use_unet_renderer=opt.use_unet_renderer,
                           tracing_steps=opt.tracing_steps)
         test(model, dataset)

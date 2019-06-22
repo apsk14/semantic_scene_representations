@@ -21,7 +21,7 @@ class SRNsModel(nn.Module):
                  implicit_nf,
                  tracing_steps,
                  has_params=False,
-                 mode='hyper',
+                 fit_single_srn=False,
                  use_unet_renderer=False,
                  depth_supervision=False):
         super().__init__()
@@ -30,14 +30,20 @@ class SRNsModel(nn.Module):
         self.has_params = has_params
         self.depth_supervision = depth_supervision
 
-        self.mode = mode
         self.implicit_nf = implicit_nf
 
         self.phi_layers = 4 # includes the in and out layers
         self.rendering_layers = 5 # includes the in and out layers
         self.sphere_trace_steps = tracing_steps
 
-        if mode=='hyper':
+        self.fit_single_srn = fit_single_srn
+
+        if self.fit_single_srn: # Fit a single scene with a single SRN (no hypernetworks)
+            self.phi = pytorch_prototyping.FCBlock(hidden_ch=implicit_nf,
+                                                   num_hidden_layers=self.phi_layers-2,
+                                                   in_features=3,
+                                                   out_features=self.implicit_nf)
+        else:
             # Auto-decoder: each scene instance gets its own code vector
             self.latent_codes = nn.Embedding(num_objects, embedding_size).cuda()
             nn.init.normal_(self.latent_codes.weight, mean=0, std=0.01)
@@ -49,13 +55,6 @@ class SRNsModel(nn.Module):
                                                  num_hidden_layers=self.phi_layers-2,
                                                  in_ch=3,
                                                  out_ch=self.implicit_nf)
-        elif mode == 'single': # Fit a single scene with a single SRN (no hypernetworks)
-            self.phi = pytorch_prototyping.FCBlock(hidden_ch=implicit_nf,
-                                                   num_hidden_layers=self.phi_layers-2,
-                                                   in_features=3,
-                                                   out_features=self.implicit_nf)
-        else:
-            raise ValueError("Unknown SRN mode")
 
         self.ray_marcher = RaycasterNet(n_grid_feats=self.implicit_nf,
                                         raycast_steps=self.sphere_trace_steps)
@@ -116,10 +115,10 @@ class SRNsModel(nn.Module):
         '''Computes loss on latent code vectors (L_{latent} in eq. 6 in paper)
         :return: Latent loss.
         '''
-        if self.mode == 'hyper':
-            self.latent_reg_loss = torch.mean(self.z ** 2)
-        else:
+        if self.fit_single_srn:
             self.latent_reg_loss = 0
+        else:
+            self.latent_reg_loss = torch.mean(self.z ** 2)
 
         return self.latent_reg_loss
 
@@ -281,7 +280,9 @@ class SRNsModel(nn.Module):
         intrinsics = observation.intrinsics.cuda()
         xy = observation.xy.cuda().float()
 
-        if self.mode == 'hyper':
+        if self.fit_single_srn:
+            phi = self.phi
+        else:
             if self.has_params:
                 if z is None:
                     self.z = observation.param.cuda()
@@ -291,8 +292,6 @@ class SRNsModel(nn.Module):
                 self.z = self.latent_codes(instance_idcs)
 
             phi = self.hyper_phi(self.z)
-        elif self.mode == 'single':
-            phi = self.phi
 
         if not self.counter and self.training:
             print(phi)
