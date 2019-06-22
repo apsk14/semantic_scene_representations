@@ -39,8 +39,8 @@ class SRNsModel(nn.Module):
 
         if mode=='hyper':
             # Auto-decoder: each scene instance gets its own code vector
-            self.obj_embedding = nn.Embedding(num_objects, embedding_size).cuda()
-            nn.init.normal_(self.obj_embedding.weight, mean=0, std=0.01)
+            self.latent_codes = nn.Embedding(num_objects, embedding_size).cuda()
+            nn.init.normal_(self.latent_codes.weight, mean=0, std=0.01)
 
             self.hyper_phi = hyperlayers.HyperFC(hyper_in_ch=self.embedding_size,
                                                  hyper_num_hidden_layers=1,
@@ -57,18 +57,18 @@ class SRNsModel(nn.Module):
         else:
             raise ValueError("Unknown SRN mode")
 
-        self.intersection_net = RaycasterNet(n_grid_feats=self.implicit_nf,
-                                             raycast_steps=self.sphere_trace_steps)
+        self.ray_marcher = RaycasterNet(n_grid_feats=self.implicit_nf,
+                                        raycast_steps=self.sphere_trace_steps)
 
         if use_unet_renderer:
-            self.rendering_net = DeepvoxelsRenderer(nf0=32, in_channels=implicit_nf,
-                                                    input_resolution=128, img_sidelength=128)
+            self.pixel_generator = DeepvoxelsRenderer(nf0=32, in_channels=implicit_nf,
+                                                      input_resolution=128, img_sidelength=128)
         else:
-            self.rendering_net = pytorch_prototyping.FCBlock(hidden_ch=self.implicit_nf,
-                                                             num_hidden_layers=self.rendering_layers-1,
-                                                             in_features=self.implicit_nf,
-                                                             out_features=3,
-                                                             outermost_linear=True)
+            self.pixel_generator = pytorch_prototyping.FCBlock(hidden_ch=self.implicit_nf,
+                                                               num_hidden_layers=self.rendering_layers-1,
+                                                               in_features=self.implicit_nf,
+                                                               out_features=3,
+                                                               outermost_linear=True)
 
         self.counter = 0
 
@@ -117,7 +117,7 @@ class SRNsModel(nn.Module):
         :return: Latent loss.
         '''
         if self.mode == 'hyper':
-            self.latent_reg_loss = torch.mean(self.embedding**2)
+            self.latent_reg_loss = torch.mean(self.z ** 2)
         else:
             self.latent_reg_loss = 0
 
@@ -276,40 +276,40 @@ class SRNsModel(nn.Module):
 
         # Parse model input.
         observation = Observation(*input)
-        obj_idcs = observation.obj_idx.long().cuda()
-        trgt_pose = observation.pose.cuda()
+        instance_idcs = observation.obj_idx.long().cuda()
+        pose = observation.pose.cuda()
         intrinsics = observation.intrinsics.cuda()
         xy = observation.xy.cuda().float()
 
         if self.mode == 'hyper':
             if self.has_params:
                 if embedding is None:
-                    self.embedding = observation.param.cuda()
+                    self.z = observation.param.cuda()
                 else:
-                    self.embedding = embedding
+                    self.z = embedding
             else:
-                self.embedding = self.obj_embedding(obj_idcs)
+                self.z = self.latent_codes(instance_idcs)
 
-            phi = self.hyper_phi(self.embedding)
+            phi = self.hyper_phi(self.z)
         elif self.mode == 'single':
             phi = self.phi
 
         if not self.counter and self.training:
             print(phi)
 
-        points_xyz, depth_maps, log = self.intersection_net(cam2world=trgt_pose,
-                                                            intrinsics=intrinsics,
-                                                            xy=xy,
-                                                            feature_net=phi)
+        points_xyz, depth_maps, log = self.ray_marcher(cam2world=pose,
+                                                       intrinsics=intrinsics,
+                                                       xy=xy,
+                                                       feature_net=phi)
         self.logs.extend(log)
 
-        feats = phi(points_xyz) # feats: (batch, num_samples, num_grid_feats)
-        novel_views = self.rendering_net(feats)
+        v = phi(points_xyz)
+        novel_views = self.pixel_generator(v)
 
         if self.mode == 'hyper':
-            self.logs.append(('embedding', '', self.obj_embedding.weight, 500))
-            self.logs.append(('scalar', 'embed_min', self.embedding.min(), 1))
-            self.logs.append(('scalar', 'embed_max', self.embedding.max(), 1))
+            self.logs.append(('embedding', '', self.latent_codes.weight, 500))
+            self.logs.append(('scalar', 'embed_min', self.z.min(), 1))
+            self.logs.append(('scalar', 'embed_max', self.z.max(), 1))
 
         if self.training:
             self.counter += 1

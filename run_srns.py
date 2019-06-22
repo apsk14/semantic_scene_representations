@@ -283,24 +283,24 @@ def test(model, dataset):
 
 def main():
     if opt.train_test == 'train':
-        dataset = ObjectClassDataset(root_dir=opt.data_root,
-                                     preload=not opt.no_preloading,
-                                     max_num_instances=opt.num_train_instances,
-                                     max_observations_per_instance=opt.num_images,
-                                     img_sidelength=opt.img_sidelength,
-                                     samples_per_object=1)
+        dataset = SceneClassDataset(root_dir=opt.data_root,
+                                    preload=not opt.no_preloading,
+                                    max_num_instances=opt.num_train_instances,
+                                    max_observations_per_instance=opt.num_images,
+                                    img_sidelength=opt.img_sidelength,
+                                    samples_per_instance=1)
 
         if not opt.no_validation:
-            val_dataset = ObjectClassDataset(root_dir=opt.val_root,
-                                             preload=not opt.no_preloading,
-                                             max_num_instances=opt.num_val_instances,
-                                             max_observations_per_instance=opt.num_val_images,
-                                             img_sidelength=opt.img_sidelength,
-                                             samples_per_object=1)
+            val_dataset = SceneClassDataset(root_dir=opt.val_root,
+                                            preload=not opt.no_preloading,
+                                            max_num_instances=opt.num_val_instances,
+                                            max_observations_per_instance=opt.num_val_images,
+                                            img_sidelength=opt.img_sidelength,
+                                            samples_per_instance=1)
         else:
             val_dataset = None
 
-        model = SRNsModel(num_objects=dataset.num_obj,
+        model = SRNsModel(num_objects=dataset.num_instances,
                           embedding_size=opt.embedding_size,
                           implicit_nf=opt.implicit_nf,
                           has_params=opt.has_params,
@@ -309,13 +309,13 @@ def main():
                           tracing_steps=opt.tracing_steps)
         train(model, dataset, val_dataset)
     elif opt.train_test == 'test':
-        dataset = ObjectClassDataset(root_dir=opt.data_root,
-                                     preload=not opt.no_preloading,
-                                     max_num_instances=opt.num_objects,
-                                     max_observations_per_instance=-1,
-                                     samples_per_object=1,
-                                     img_sidelength=opt.img_sidelength)
-        model = SRNsModel(num_objects=dataset.num_obj,
+        dataset = SceneClassDataset(root_dir=opt.data_root,
+                                    preload=not opt.no_preloading,
+                                    max_num_instances=opt.num_objects,
+                                    max_observations_per_instance=-1,
+                                    samples_per_instance=1,
+                                    img_sidelength=opt.img_sidelength)
+        model = SRNsModel(num_objects=dataset.num_instances,
                           embedding_size=opt.embedding_size,
                           implicit_nf=opt.implicit_nf,
                           has_params=opt.has_params,

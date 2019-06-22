@@ -6,7 +6,7 @@ import data_util
 import util
 
 from collections import namedtuple
-Observation = namedtuple('ray_bundle', 'obj_idx rgb depth xy pose intrinsics param')
+Observation = namedtuple('observation', 'instance_idx rgb depth xy pose intrinsics param')
 
 class Preloader():
     def __init__(self, paths, load_to_ram, loading_function):
@@ -36,24 +36,24 @@ def pick(list, item_idcs):
     return [list[i] for i in item_idcs]
 
 
-class ObjectInstanceDataset():
+class SceneInstanceDataset():
     def __init__(self,
-                 obj_idx,
-                 object_dir,
+                 instance_idx,
+                 instance_dir,
                  load_to_ram,
                  img_sidelength=None,
                  num_images=-1):
         super().__init__()
 
-        self.obj_idx = obj_idx
+        self.instance_idx = instance_idx
 
-        color_dir = os.path.join(object_dir, 'rgb')
-        pose_dir = os.path.join(object_dir, 'pose')
-        depth_dir = os.path.join(object_dir, 'depth')
-        param_dir = os.path.join(object_dir, 'params')
+        color_dir = os.path.join(instance_dir, 'rgb')
+        pose_dir = os.path.join(instance_dir, 'pose')
+        depth_dir = os.path.join(instance_dir, 'depth')
+        param_dir = os.path.join(instance_dir, 'params')
 
         if not os.path.isdir(color_dir):
-            print("Error! root dir %s is wrong"%object_dir)
+            print("Error! root dir %s is wrong" % instance_dir)
             return
 
         self.has_depth = os.path.isdir(depth_dir)
@@ -96,12 +96,12 @@ class ObjectInstanceDataset():
 
         self.dummy = np.zeros((self.img_width*self.img_height, 1))
 
-        intrinsics, _, _, world2cam_poses = util.parse_intrinsics(os.path.join(object_dir, 'intrinsics.txt'),
+        intrinsics, _, _, world2cam_poses = util.parse_intrinsics(os.path.join(instance_dir, 'intrinsics.txt'),
                                                                   trgt_sidelength=self.img_width)
         self.intrinsics = torch.Tensor(intrinsics).float()
 
         print("*"*20)
-        print(object_dir)
+        print(instance_dir)
         print(intrinsics)
         print(world2cam_poses)
         print(len(self.rgbs), len(self.poses), len(self.depths))
@@ -124,7 +124,7 @@ class ObjectInstanceDataset():
         rgbs = self.rgbs[idx].reshape(3, -1).transpose(1,0)
         depths = depth.reshape(-1, 1)
 
-        return Observation(obj_idx=torch.Tensor([self.obj_idx]).squeeze(),
+        return Observation(instance_idx=torch.Tensor([self.instance_idx]).squeeze(),
                            rgb=torch.from_numpy(rgbs).float(),
                            pose=torch.from_numpy(self.poses[idx]).float(),
                            depth=torch.from_numpy(depths).float(),
@@ -133,49 +133,48 @@ class ObjectInstanceDataset():
                            intrinsics=self.intrinsics)
 
 
-class ObjectClassDataset():
+class SceneClassDataset():
     def __init__(self,
                  root_dir,
                  preload=True,
                  img_sidelength=None,
                  max_num_instances=-1,
                  max_observations_per_instance=-1,
-                 samples_per_object=2):
+                 samples_per_instance=2):
         super().__init__()
 
-        self.samples_per_object = samples_per_object
+        self.samples_per_instance = samples_per_instance
 
-        self.object_dirs = sorted(glob(os.path.join(root_dir, '*/')))
-        print('\n'.join(self.object_dirs))
-        self.num_obj = len(self.object_dirs)
+        self.instance_dirs = sorted(glob(os.path.join(root_dir, '*/')))
+        print('\n'.join(self.instance_dirs))
 
-        assert (self.num_obj !=0), "No objects in the data directory"
+        assert (len(self.instance_dirs) != 0), "No objects in the data directory"
 
         if max_num_instances != -1:
-            self.object_dirs = self.object_dirs[:max_num_instances]
+            self.instance_dirs = self.instance_dirs[:max_num_instances]
 
-        self.all_objs = [ObjectInstanceDataset(obj_idx=obj_idx,
-                                               object_dir=obj_dir,
-                                               load_to_ram=preload,
-                                               img_sidelength=img_sidelength,
-                                               num_images=max_observations_per_instance)
-                         for obj_idx, obj_dir in enumerate(self.object_dirs)]
+        self.all_instances = [SceneInstanceDataset(instance_idx=idx,
+                                                   instance_dir=dir,
+                                                   load_to_ram=preload,
+                                                   img_sidelength=img_sidelength,
+                                                   num_images=max_observations_per_instance)
+                              for idx, dir in enumerate(self.instance_dirs)]
 
-        self.all_obj_lens = [len(obj) for obj in self.all_objs]
-        self.num_obj = len(self.all_objs)
+        self.num_per_instance_observations = [len(obj) for obj in self.all_instances]
+        self.num_instances = len(self.all_instances)
 
     def __len__(self):
-        return np.sum([len(obj_ds) for obj_ds in self.all_objs])
+        return np.sum([len(obj_ds) for obj_ds in self.all_instances])
 
-    def get_obj_idx(self, idx):
+    def get_instance_idx(self, idx):
         '''Maps an index into all tuples of all objects to the idx of the tuple relative to the other tuples of that
         object
         '''
         obj_idx = 0
         while idx >= 0:
-            idx -= self.all_obj_lens[obj_idx]
+            idx -= self.num_per_instance_observations[obj_idx]
             obj_idx += 1
-        return obj_idx - 1, int(idx + self.all_obj_lens[obj_idx-1])
+        return obj_idx - 1, int(idx + self.num_per_instance_observations[obj_idx - 1])
 
     def collate_fn(self, batch_list):
         model_inputs, trgts = zip(*batch_list)
@@ -208,13 +207,13 @@ class ObjectClassDataset():
         return model_inputs, model_trgts
 
     def __getitem__(self, idx):
-        obj_idx, rel_idx = self.get_obj_idx(idx)
+        obj_idx, rel_idx = self.get_instance_idx(idx)
 
-        ray_bundles = []
-        ray_bundles.append(self.all_objs[obj_idx][rel_idx])
+        observations = []
+        observations.append(self.all_instances[obj_idx][rel_idx])
 
-        for i in range(self.samples_per_object-1):
-            ray_bundles.append(self.all_objs[obj_idx][np.random.randint(len(self.all_objs[obj_idx]))])
+        for i in range(self.samples_per_instance - 1):
+            observations.append(self.all_instances[obj_idx][np.random.randint(len(self.all_instances[obj_idx]))])
 
-        return ray_bundles, ([ray_bundle.rgb for ray_bundle in ray_bundles],
-                             [ray_bundle.depth for ray_bundle in ray_bundles])
+        return observations, ([ray_bundle.rgb for ray_bundle in observations],
+                             [ray_bundle.depth for ray_bundle in observations])
