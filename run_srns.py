@@ -271,7 +271,7 @@ def test(model, dataset):
                 print(idx)
 
             model_outputs = model(model_input)
-            model.write_eval(model_outputs, ground_truth, os.path.join(traj_dir, "%06d.png"%idx))
+            model.write_eval(model_outputs, os.path.join(traj_dir, "%06d.png"%idx))
             model.write_comparison(model_outputs, ground_truth, os.path.join(comparison_dir, "%06d.png"%idx))
 
             psnr, ssim = model.get_psnr(model_outputs, ground_truth)

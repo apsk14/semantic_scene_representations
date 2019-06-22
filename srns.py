@@ -123,6 +123,12 @@ class SRNsModel(nn.Module):
         return self.latent_reg_loss
 
     def get_psnr(self, prediction, ground_truth):
+        '''Compute PSNR of model image predictions.
+
+        :param prediction: Return value of forward pass.
+        :param ground_truth: Ground truth.
+        :return: (psnr, ssim): tuple of floats
+        '''
         pred_imgs, _ = prediction
         trgt_imgs, _ = ground_truth
 
@@ -156,6 +162,13 @@ class SRNsModel(nn.Module):
         return np.mean(psnrs), np.mean(ssims)
 
     def write_comparison(self, prediction, ground_truth, path, plot_ground_truth=False):
+        '''Writes out an image that also includes depth map, and optionally the ground-truth image.
+
+        :param prediction: Return value of forward pass.
+        :param path: Where to write image to.
+        :param plot_ground_truth: Whether to include ground-truth image.
+        :return:
+        '''
         pred_imgs, pred_depth_maps = prediction
         trgt_imgs, _ = ground_truth
 
@@ -181,13 +194,26 @@ class SRNsModel(nn.Module):
             output = np.concatenate((depth_img, pred), axis=1)
         util.write_img(output, path)
 
-    def write_eval(self, prediction, ground_truth, path):
-        predictions, depth_maps = prediction
-        predictions = util.lin2img(predictions)
-        pred = util.convert_image(predictions)
+    def write_eval(self, prediction, path):
+        '''Writes output image only.
+
+        :param prediction: Return value of forward pass.
+        :param path: Where to write image to.
+        '''
+        pred_imgs, _ = prediction
+        pred_imgs = util.lin2img(pred_imgs)
+        pred = util.convert_image(pred_imgs)
         util.write_img(pred, path)
 
     def write_updates(self, writer, predictions, ground_truth, iter, prefix=''):
+        '''Writes tensorboard summaries using tensorboardx api.
+
+        :param writer: tensorboardx writer object.
+        :param predictions: Output of forward pass.
+        :param ground_truth: Ground truth.
+        :param iter: Iteration number.
+        :param prefix: Every summary will be prefixed with this string.
+        '''
         predictions, depth_maps = predictions
         trgt_imgs, trgt_depths = ground_truth
 
