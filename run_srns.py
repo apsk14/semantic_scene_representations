@@ -72,8 +72,6 @@ parser.add_argument('--start_step', type=int, default=0,
 
 parser.add_argument('--use_unet_renderer', action='store_true',
                     help='Whether to use a DeepVoxels-style unet as rendering network or a per-pixel 1x1 convnet')
-parser.add_argument('--implicit_nf', type=int, default=256,
-                    help='Number of hidden units in SRN')
 parser.add_argument('--embedding_size', type=int, default=256,
                     help='Dimensionality of latent embedding.')
 
@@ -301,9 +299,8 @@ def main():
         else:
             val_dataset = None
 
-        model = SRNsModel(num_objects=dataset.num_instances,
-                          embedding_size=opt.embedding_size,
-                          implicit_nf=opt.implicit_nf,
+        model = SRNsModel(num_instances=dataset.num_instances,
+                          latent_dim=opt.embedding_size,
                           has_params=opt.has_params,
                           fit_single_srn=opt.fit_single_srn,
                           use_unet_renderer=opt.use_unet_renderer,
@@ -316,9 +313,8 @@ def main():
                                     max_observations_per_instance=-1,
                                     samples_per_instance=1,
                                     img_sidelength=opt.img_sidelength)
-        model = SRNsModel(num_objects=dataset.num_instances,
-                          embedding_size=opt.embedding_size,
-                          implicit_nf=opt.implicit_nf,
+        model = SRNsModel(num_instances=dataset.num_instances,
+                          latent_dim=opt.embedding_size,
                           has_params=opt.has_params,
                           fit_single_srn=opt.fit_single_srn,
                           use_unet_renderer=opt.use_unet_renderer,

@@ -6,15 +6,9 @@ export CUDA_VISIBLE_DEVICES=7
 python ../run_deepspace.py --train_test train \
                            --data_root /home/sitzmann/data/deep_space/data/shapenet_cars_no_transp_test/ \
                            --logging_root /home/sitzmann/data/deep_space/logging/few_shot \
-                           --use_images \
                            --img_sidelength 128 \
-                           --mode hyper \
-                           --implicit_nf 256 \
-                           --embedding_size 256 \
                            --batch_size 12 \
                            --tracing_steps 10 \
-                           --experiment_name cars_few_shot \
-                           --no_gan \
                            --lr 5e-5 \
                            --reg_weight 1.e-3 \
                            --no_validation \

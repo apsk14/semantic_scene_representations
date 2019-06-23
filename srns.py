@@ -16,22 +16,18 @@ import hyperlayers
 
 class SRNsModel(nn.Module):
     def __init__(self,
-                 num_objects,
-                 embedding_size,
-                 implicit_nf,
+                 num_instances,
+                 latent_dim,
                  tracing_steps,
                  has_params=False,
                  fit_single_srn=False,
-                 use_unet_renderer=False,
-                 depth_supervision=False):
+                 use_unet_renderer=False):
         super().__init__()
 
-        self.embedding_size = embedding_size
+        self.latent_dim = latent_dim
         self.has_params = has_params
-        self.depth_supervision = depth_supervision
 
-        self.implicit_nf = implicit_nf
-
+        self.num_hidden_units_phi = 256
         self.phi_layers = 4 # includes the in and out layers
         self.rendering_layers = 5 # includes the in and out layers
         self.sphere_trace_steps = tracing_steps
@@ -39,33 +35,33 @@ class SRNsModel(nn.Module):
         self.fit_single_srn = fit_single_srn
 
         if self.fit_single_srn: # Fit a single scene with a single SRN (no hypernetworks)
-            self.phi = pytorch_prototyping.FCBlock(hidden_ch=implicit_nf,
+            self.phi = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
                                                    num_hidden_layers=self.phi_layers-2,
                                                    in_features=3,
-                                                   out_features=self.implicit_nf)
+                                                   out_features=self.num_hidden_units_phi)
         else:
             # Auto-decoder: each scene instance gets its own code vector
-            self.latent_codes = nn.Embedding(num_objects, embedding_size).cuda()
+            self.latent_codes = nn.Embedding(num_instances, latent_dim).cuda()
             nn.init.normal_(self.latent_codes.weight, mean=0, std=0.01)
 
-            self.hyper_phi = hyperlayers.HyperFC(hyper_in_ch=self.embedding_size,
+            self.hyper_phi = hyperlayers.HyperFC(hyper_in_ch=self.latent_dim,
                                                  hyper_num_hidden_layers=1,
-                                                 hyper_hidden_ch=self.embedding_size,
-                                                 hidden_ch=implicit_nf,
+                                                 hyper_hidden_ch=self.latent_dim,
+                                                 hidden_ch=self.num_hidden_units_phi,
                                                  num_hidden_layers=self.phi_layers-2,
                                                  in_ch=3,
-                                                 out_ch=self.implicit_nf)
+                                                 out_ch=self.num_hidden_units_phi)
 
-        self.ray_marcher = RaycasterNet(n_grid_feats=self.implicit_nf,
-                                        raycast_steps=self.sphere_trace_steps)
+        self.ray_marcher = Raymarcher(num_feature_channels=self.num_hidden_units_phi,
+                                      raymarch_steps=self.sphere_trace_steps)
 
         if use_unet_renderer:
-            self.pixel_generator = DeepvoxelsRenderer(nf0=32, in_channels=implicit_nf,
+            self.pixel_generator = DeepvoxelsRenderer(nf0=32, in_channels=self.num_hidden_units_phi,
                                                       input_resolution=128, img_sidelength=128)
         else:
-            self.pixel_generator = pytorch_prototyping.FCBlock(hidden_ch=self.implicit_nf,
+            self.pixel_generator = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
                                                                num_hidden_layers=self.rendering_layers-1,
-                                                               in_features=self.implicit_nf,
+                                                               in_features=self.num_hidden_units_phi,
                                                                out_features=3,
                                                                outermost_linear=True)
 

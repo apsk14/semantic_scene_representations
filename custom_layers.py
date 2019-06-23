@@ -34,40 +34,6 @@ def clip_grad_norm_hook(x, max_norm=10):
         return x * clip_coef
 
 
-class RecurrentSignedDistancePointPredictor(nn.Module):
-    def __init__(self, in_ch):
-        super().__init__()
-
-        hidden_size = 16
-        self.in_ch = in_ch
-
-        self.rnn = nn.LSTMCell(input_size=in_ch,
-                               hidden_size=hidden_size)
-
-        self.rnn.apply(init_recurrent_weights)
-        lstm_forget_gate_init(self.rnn)
-
-        self.out_layer = nn.Linear(hidden_size, 1)
-
-    def forward(self, features, line_direction, point_on_line, prev_state=None):
-        batch_size, num_points, num_feats = features.shape
-
-        state = self.rnn(features.view(-1, num_feats), prev_state)
-
-        if state[0].requires_grad:
-            state[0].register_hook(lambda x: x.clamp(min=-10, max=10))
-
-        signed_distance = self.out_layer(state[0]).view(batch_size, num_points, 1)
-
-        pred_points = line_from_signed_distance_to_point(signed_distance, line_direction, point_on_line)
-
-        return pred_points, state, signed_distance
-
-
-def line_from_signed_distance_to_point(distance, line_direction, point_on_line):
-    return point_on_line + line_direction * distance
-
-
 class DepthSampler(nn.Module):
     def __init__(self):
         super().__init__()
@@ -85,46 +51,63 @@ class DepthSampler(nn.Module):
         intersections = geometry.world_from_xy_depth(xy=xy, depth=depth, cam2world=cam2world, intrinsics=intrinsics)
 
         depth = geometry.depth_from_world(intersections, cam2world)
-        print(depth.min(), depth.max())
+
+        if self.training:
+            print(depth.min(), depth.max())
 
         return intersections, depth
 
 
-class RaycasterNet(nn.Module):
+class Raymarcher(nn.Module):
     def __init__(self,
-                 n_grid_feats,
-                 raycast_steps):
+                 num_feature_channels,
+                 raymarch_steps):
         super().__init__()
 
-        self.n_grid_feats = n_grid_feats
-        self.steps = raycast_steps
+        self.n_feature_channels = num_feature_channels
+        self.steps = raymarch_steps
 
-        self.step_predictor = RecurrentSignedDistancePointPredictor(in_ch=self.n_grid_feats)
+        hidden_size = 16
+        self.lstm = nn.LSTMCell(input_size=self.n_feature_channels,
+                                hidden_size=hidden_size)
+
+        self.lstm.apply(init_recurrent_weights)
+        lstm_forget_gate_init(self.lstm)
+
+        self.out_layer = nn.Linear(hidden_size, 1)
         self.counter = 0
 
     def forward(self,
                 cam2world,
-                feature_net,
-                xy,
+                phi,
+                uv,
                 intrinsics):
-        batch_size, num_samples, _ = xy.shape
+        batch_size, num_samples, _ = uv.shape
 
-        ray_dirs = geometry.get_ray_directions(xy, cam2world=cam2world, intrinsics=intrinsics)
+        ray_dirs = geometry.get_ray_directions(uv,
+                                               cam2world=cam2world,
+                                               intrinsics=intrinsics)
 
         initial_depth = torch.ones((batch_size, num_samples, 1)).fill_(0.05).cuda()
-        init_world_coords = geometry.world_from_xy_depth(xy, initial_depth, intrinsics=intrinsics, cam2world=cam2world)
+        init_world_coords = geometry.world_from_xy_depth(uv,
+                                                         initial_depth,
+                                                         intrinsics=intrinsics,
+                                                         cam2world=cam2world)
 
         world_coords = [init_world_coords]
         depths = [initial_depth]
         states = [None]
 
         for step in range(self.steps):
-            features = feature_net(world_coords[-1])
+            v = phi(world_coords[-1])
 
-            new_world_coords, state, signed_distance = self.step_predictor(features,
-                                                                           ray_dirs,
-                                                                           world_coords[-1],
-                                                                           states[-1])
+            state = self.lstm(v.view(-1, self.n_feature_channels), states[-1])
+
+            if state[0].requires_grad:
+                state[0].register_hook(lambda x: x.clamp(min=-10, max=10))
+
+            signed_distance = self.out_layer(state[0]).view(batch_size, num_samples, 1)
+            new_world_coords = world_coords[-1] + ray_dirs * signed_distance
 
             states.append(state)
             world_coords.append(new_world_coords)
@@ -132,12 +115,15 @@ class RaycasterNet(nn.Module):
             depth = geometry.depth_from_world(world_coords[-1], cam2world)
 
             depth_step = depth - depths[-1]
-            print(depth_step.min(), depth_step.max())
+
+            if self.training:
+                print(depth_step.min(), depth_step.max())
 
             depths.append(depth)
 
-        print(depths[-1].min(), depths[-1].max())
-        print('\n')
+        if self.training:
+            print(depths[-1].min(), depths[-1].max())
+            print('\n')
 
         # Log the depth progression
         drawing_depths = torch.stack(depths, dim=0)[:,0,:,:]
