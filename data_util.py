@@ -41,6 +41,8 @@ def load_rgb(path, sidelength=None):
     img = imageio.imread(path)[:,:,:3]
     img = skimage.img_as_float32(img)
 
+    img = square_crop_img(img)
+
     if sidelength is not None:
         img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_AREA)
 
@@ -171,7 +173,7 @@ def load_params(filename):
 
 def glob_imgs(path):
     imgs = []
-    for ext in ['*.png', '*.jpg', '*.JPEG']:
+    for ext in ['*.png', '*.jpg', '*.JPEG', '*.JPG']:
         imgs.extend(glob(os.path.join(path, ext)))
     return imgs
 

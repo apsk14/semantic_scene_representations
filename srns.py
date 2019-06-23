@@ -9,6 +9,7 @@ import util
 
 from dataio import Observation
 import skimage.measure, skimage.transform
+from torch.nn import functional as F
 
 from pytorch_prototyping import pytorch_prototyping
 import hyperlayers
@@ -131,23 +132,21 @@ class SRNsModel(nn.Module):
         trgt_imgs = trgt_imgs.cuda()
         batch_size = pred_imgs.shape[0]
 
-        pred_imgs = util.lin2img(pred_imgs)
-        trgt_imgs = util.lin2img(trgt_imgs)
+        if not isinstance(pred_imgs, np.ndarray):
+            pred_imgs = util.lin2img(pred_imgs).detach().cpu().numpy()
+
+        if not isinstance(trgt_imgs, np.ndarray):
+            trgt_imgs = util.lin2img(trgt_imgs).detach().cpu().numpy()
 
         psnrs, ssims = list(), list()
         for i in range(batch_size):
-            p = pred_imgs[i,:,5:-5,5:-5].squeeze().permute(1,2,0).detach().cpu()
-            trgt = trgt_imgs[i,:,5:-5,5:-5].squeeze().permute(1,2,0).detach().cpu()
+            p = pred_imgs[i].squeeze().transpose(1,2,0)
+            trgt = trgt_imgs[i].squeeze().transpose(1,2,0)
 
-            p /= 2.
-            p += 0.5
-            p = torch.clamp(p, 0., 1.)
+            p = (p / 2.) + 0.5
+            p = np.clip(p, a_min=0., a_max=1.)
 
-            trgt /= 2.
-            trgt += 0.5
-
-            p = p.numpy()
-            trgt = trgt.numpy()
+            trgt = (trgt / 2.) + 0.5
 
             ssim = skimage.measure.compare_ssim(p, trgt, multichannel=True, data_range=1)
             psnr = skimage.measure.compare_psnr(p, trgt, data_range=1)
@@ -155,51 +154,39 @@ class SRNsModel(nn.Module):
             psnrs.append(psnr)
             ssims.append(ssim)
 
-        return np.mean(psnrs), np.mean(ssims)
+        return psnrs, ssims
 
-    def write_comparison(self, prediction, ground_truth, path, plot_ground_truth=False):
-        '''Writes out an image that also includes depth map, and optionally the ground-truth image.
+    def get_comparisons(self, model_input, prediction, ground_truth=None):
+        predictions, depth_maps = prediction
 
-        :param prediction: Return value of forward pass.
-        :param path: Where to write image to.
-        :param plot_ground_truth: Whether to include ground-truth image.
-        :return:
-        '''
-        pred_imgs, pred_depth_maps = prediction
-        trgt_imgs, _ = ground_truth
+        batch_size = predictions.shape[0]
 
-        trgt_imgs = trgt_imgs.cuda()
+        observation = Observation(*model_input)
 
-        pred_imgs = util.lin2img(pred_imgs)
-        trgt_imgs = util.lin2img(trgt_imgs)
-        depth_maps = util.lin2img(pred_depth_maps)
+        # Parse model input.
+        intrinsics = observation.intrinsics.cuda()
+        xy = observation.xy.cuda().float()
 
-        gt = util.convert_image(trgt_imgs)
-        pred = util.convert_image(pred_imgs)
+        x_cam = xy[:, :, 0].view(batch_size, -1)
+        y_cam = xy[:, :, 1].view(batch_size, -1)
+        z_cam = depth_maps.view(batch_size, -1)
 
-        depth_img = depth_maps.squeeze()[:,:,None].cpu().numpy()
-        depth_img = (depth_img - np.amin(depth_img)) / (np.amax(depth_img) - np.amin(depth_img))
-        depth_img *= 2**8 - 1
-        depth_img = depth_img.round()
-        depth_img = cv2.applyColorMap(depth_img.astype(np.uint8), cv2.COLORMAP_JET)
-        depth_img = (depth_img.astype(np.float32) / (2**8-1)) * (2**16 -1)
+        normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
+        normals = F.pad(normals, pad=(1, 1, 1, 1), mode='constant', value=1.)
 
-        if plot_ground_truth:
-            output = np.concatenate((depth_img, pred, gt), axis=1)
+        predictions = util.lin2img(predictions)
+
+        if ground_truth is not None:
+            trgt_imgs, trgt_depths = ground_truth
+            trgt_imgs = util.lin2img(trgt_imgs)
+
+            return torch.cat((normals.cpu(), predictions.cpu(), trgt_imgs.cpu()), dim=3).numpy()
         else:
-            output = np.concatenate((depth_img, pred), axis=1)
-        util.write_img(output, path)
+            return torch.cat((normals.cpu(), predictions.cpu()), dim=3).numpy()
 
-    def write_eval(self, prediction, path):
-        '''Writes output image only.
-
-        :param prediction: Return value of forward pass.
-        :param path: Where to write image to.
-        '''
+    def get_output_img(self, prediction):
         pred_imgs, _ = prediction
-        pred_imgs = util.lin2img(pred_imgs)
-        pred = util.convert_image(pred_imgs)
-        util.write_img(pred, path)
+        return util.lin2img(pred_imgs)
 
     def write_updates(self, writer, predictions, ground_truth, iter, prefix=''):
         '''Writes tensorboard summaries using tensorboardx api.
@@ -326,6 +313,18 @@ class SRNsModel(nn.Module):
 
         v = phi(points_xyz)
         novel_views = self.pixel_generator(v)
+
+        # Calculate normal map
+        with torch.no_grad():
+            batch_size = xy.shape[0]
+            x_cam = xy[:,:,0].view(batch_size, -1)
+            y_cam = xy[:,:,1].view(batch_size, -1)
+            z_cam = depth_maps.view(batch_size, -1)
+
+            normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
+            self.logs.append(('image', 'normals',
+                              torchvision.utils.make_grid(normals, scale_each=True, normalize=True), 100))
+
 
         if self.mode == 'hyper':
             self.logs.append(('embedding', '', self.latent_codes.weight, 500))

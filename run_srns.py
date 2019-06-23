@@ -59,6 +59,8 @@ parser.add_argument('--max_num_instances_val', type=int, default=10, required=Fa
                     help='If \'val_root\' has more instances, only the first max_num_instances_val are used')
 parser.add_argument('--max_num_observations_val', type=int, default=10, required=False,
                     help='Maximum numbers of observations per validation instance')
+parser.add_argument('--specific_observation_idcs', type=str, default=None,
+                    help='Only pick a subset of specific observations for each instance.')
 
 parser.add_argument('--has_params', action='store_true', default=False,
                     help='Whether each object instance already comes with its own parameter vector.')
@@ -82,10 +84,16 @@ print('\n'.join(["%s: %s" % (key, value) for key, value in vars(opt).items()]))
 device = torch.device('cuda')
 
 
-def train(model, dataset, val_dataset):
+def train(model,
+          dataset,
+          val_dataset,
+          batch_size,
+          checkpoint=None,
+          dir_name=None,
+          max_steps=None):
     collate_fn = dataset.collate_fn
     dataloader = DataLoader(dataset,
-                            batch_size=opt.batch_size,
+                            batch_size=batch_size,
                             shuffle=True,
                             drop_last=True,
                             collate_fn=collate_fn)
@@ -114,7 +122,7 @@ def train(model, dataset, val_dataset):
         print("Loading model from %s"%opt.checkpoint)
         util.custom_load(model, path=opt.checkpoint,
                          discriminator=None,
-                         optimizer=optimizer,
+                         optimizer=None,
                          overwrite_embeddings=opt.overwrite_embeddings)
 
     writer = SummaryWriter(run_dir)
@@ -205,8 +213,9 @@ def train(model, dataset, val_dataset):
                 iter += 1
                 step += 1
 
-                if iter == opt.max_steps:
-                    break
+                if max_steps is not None:
+                    if iter == max_steps:
+                        break
 
                 if iter % opt.steps_til_ckpt == 0:
                     util.custom_save(model,
@@ -214,8 +223,9 @@ def train(model, dataset, val_dataset):
                                      discriminator=None,
                                      optimizer=optimizer)
 
-            if iter == opt.max_steps:
-                break
+            if max_steps is not None:
+                if iter == max_steps:
+                    break
 
     final_ckpt_path = os.path.join(log_dir, 'epoch_%04d_iter_%06d.pth'%(epoch, iter))
     util.custom_save(model,
@@ -232,7 +242,7 @@ def test(model, dataset):
                          collate_fn=collate_fn,
                          batch_size=1,
                          shuffle=False,
-                         drop_last=True)
+                         drop_last=False)
 
     if opt.checkpoint is not None:
         print("Loading model from %s"%opt.checkpoint)
@@ -262,31 +272,70 @@ def test(model, dataset):
         out_file.write('\n'.join(["%s: %s" % (key, value) for key, value in vars(opt).items()]))
 
     print('Beginning evaluation...')
+    save_out_first_n = 250
     with torch.no_grad():
+        obj_idx = 0
+        idx = 0
         psnrs, ssims = list(), list()
-        for idx, (model_input, ground_truth) in enumerate(dataset):
-            if not idx%10:
-                print(idx)
-
+        for model_input, ground_truth in dataset:
             model_outputs = model(model_input)
-            model.write_eval(model_outputs, os.path.join(traj_dir, "%06d.png"%idx))
-            model.write_comparison(model_outputs, ground_truth, os.path.join(comparison_dir, "%06d.png"%idx))
-
             psnr, ssim = model.get_psnr(model_outputs, ground_truth)
-            psnrs.append(psnr)
-            ssims.append(ssim)
+
+            psnrs.extend(psnr)
+            ssims.extend(ssim)
+
+            print(np.mean(psnrs), np.mean(ssims))
+
+            obj_idcs = RayBundle(*model_input).obj_idx
+            print(obj_idcs[-1])
+
+            if obj_idx < save_out_first_n:
+                output_imgs = model.get_output_img(model_outputs).cpu().numpy()
+                comparisons = model.get_comparisons(model_input,
+                                                    model_outputs,
+                                                    ground_truth)
+                for i in range(len(output_imgs)):
+                    prev_obj_idx = obj_idx
+                    obj_idx = obj_idcs[i]
+
+                    if prev_obj_idx != obj_idx:
+                        idx = 0
+
+                    img_only_path = os.path.join(traj_dir, "%06d"%obj_idx)
+                    comp_path = os.path.join(comparison_dir, "%06d"%obj_idx)
+
+                    util.cond_mkdir(img_only_path)
+                    util.cond_mkdir(comp_path)
+
+                    pred = util.convert_image(output_imgs[i].squeeze())
+                    comp = util.convert_image(comparisons[i].squeeze())
+
+                    util.write_img(pred, os.path.join(img_only_path, "%06d.png"%idx))
+                    util.write_img(comp, os.path.join(comp_path, "%06d.png"%idx))
+
+                    idx += 1
+
+    with open(os.path.join(traj_dir, "results.txt"), "w") as out_file:
+        out_file.write("%0.6f, %0.6f" % (np.mean(psnrs), np.mean(ssims)))
+
 
     print(np.mean(psnrs))
     print(np.mean(ssims))
 
 
 def main():
+    if opt.specific_samples is not None:
+        specific_observation_idcs = list(map(int, opt.specific_observation_idcs.split(',')))
+    else:
+        specific_observation_idcs = None
+
     if opt.train_test == 'train':
         dataset = SceneClassDataset(root_dir=opt.data_root,
                                     preload=not opt.no_preloading,
                                     max_num_instances=opt.num_train_instances,
                                     max_observations_per_instance=opt.num_images,
                                     img_sidelength=opt.img_sidelength,
+                                    specific_observation_idcs=specific_observation_idcs,
                                     samples_per_instance=1)
 
         if not opt.no_validation:
@@ -305,11 +354,17 @@ def main():
                           fit_single_srn=opt.fit_single_srn,
                           use_unet_renderer=opt.use_unet_renderer,
                           tracing_steps=opt.tracing_steps)
-        train(model, dataset, val_dataset)
+        train(model,
+              dataset,
+              val_dataset,
+              batch_size=opt.batch_size,
+              checkpoint=opt.checkpoint,
+              max_steps=opt.max_steps)
     elif opt.train_test == 'test':
         dataset = SceneClassDataset(root_dir=opt.data_root,
                                     preload=not opt.no_preloading,
                                     max_num_instances=opt.num_objects,
+                                    specific_observation_idcs=specific_observation_idcs,
                                     max_observations_per_instance=-1,
                                     samples_per_instance=1,
                                     img_sidelength=opt.img_sidelength)

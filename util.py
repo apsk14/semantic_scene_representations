@@ -10,17 +10,20 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def convert_image(img):
-    img = np.array(img[0].squeeze().cpu().detach().numpy())
+    if not isinstance(img, np.ndarray):
+        img = np.array(img.cpu().detach().numpy())
+
+    img = img.squeeze()
     img = img.transpose(1,2,0)
     img += 1.
     img /= 2.
-    img *= 2**16 - 1
-    img = img.round().clip(0, 2**16-1)
+    img *= 2**8 - 1
+    img = img.round().clip(0, 2**8-1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img
 
 def write_img(img, path):
-    cv2.imwrite(path, img.astype(np.uint16))
+    cv2.imwrite(path, img.astype(np.uint8))
 
 
 def in_out_to_param_count(in_out_tuples):

@@ -1,7 +1,6 @@
 '''Pytorch implementations of various hyper-network modules.'''
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
 import torchvision.utils
 
 import numpy as np

@@ -41,6 +41,7 @@ class SceneInstanceDataset():
                  instance_idx,
                  instance_dir,
                  load_to_ram,
+                 specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
                  img_sidelength=None,
                  num_images=-1):
         super().__init__()
@@ -72,7 +73,12 @@ class SceneInstanceDataset():
         else:
             self.param_paths = []
 
-        if num_images != -1:
+        if specific_observation_idcs is not None:
+            self.color_paths = pick(self.color_paths, specific_observation_idcs)
+            self.pose_paths = pick(self.pose_paths, specific_observation_idcs)
+            self.depth_paths = pick(self.depth_paths, specific_observation_idcs)
+            self.param_paths = pick(self.param_paths, specific_observation_idcs)
+        elif num_images != -1:
             idcs = np.linspace(0, stop=len(self.color_paths), num=num_images, endpoint=False, dtype=int)
             self.color_paths = pick(self.color_paths, idcs)
             self.pose_paths = pick(self.pose_paths, idcs)
@@ -140,6 +146,7 @@ class SceneClassDataset():
                  img_sidelength=None,
                  max_num_instances=-1,
                  max_observations_per_instance=-1,
+                 specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
                  samples_per_instance=2):
         super().__init__()
 
@@ -156,6 +163,7 @@ class SceneClassDataset():
         self.all_instances = [SceneInstanceDataset(instance_idx=idx,
                                                    instance_dir=dir,
                                                    load_to_ram=preload,
+                                                   specific_observation_idcs=specific_observation_idcs,
                                                    img_sidelength=img_sidelength,
                                                    num_images=max_observations_per_instance)
                               for idx, dir in enumerate(self.instance_dirs)]

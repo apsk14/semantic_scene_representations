@@ -6,6 +6,48 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 from torch.nn import functional as F
+import util
+
+
+def compute_normal_map(x_img, y_img, z, intrinsics):
+    cam_coords = lift(x_img, y_img, z, intrinsics)
+    cam_coords = util.lin2img(cam_coords)
+
+    shift_left = cam_coords[:,:,2:,:]
+    shift_right = cam_coords[:,:,:-2,:]
+
+    shift_up = cam_coords[:,:,:,2:]
+    shift_down = cam_coords[:,:,:,:-2]
+
+    diff_hor = F.normalize(shift_right - shift_left, dim=1)[:,:,:,1:-1]
+    diff_ver = F.normalize(shift_up - shift_down, dim=1)[:,:,1:-1,:]
+
+    cross = torch.cross(diff_hor, diff_ver, dim=1)
+    return cross
+
+
+def get_ray_directions_cam(xy, intrinsics):
+    '''Translates meshgrid of xy pixel coordinates to normalized directions of rays through these pixels,
+    in camera coordinates.
+    '''
+    batch_size, num_samples, _ = xy.shape
+
+    x_cam = xy[:,:,0].view(batch_size, -1)
+    y_cam = xy[:,:,1].view(batch_size, -1)
+    z_cam = torch.ones((batch_size, num_samples)).cuda()
+
+    pixel_points_cam = lift(x_cam, y_cam, z_cam, intrinsics=intrinsics, homogeneous=False) # (batch_size, -1, 4)
+    ray_dirs = F.normalize(pixel_points_cam, dim=2)
+    return ray_dirs
+
+
+
+def reflect_vector_on_vector(vector_to_reflect, reflection_axis):
+    refl = F.normalize(vector_to_reflect.cuda())
+    ax = F.normalize(reflection_axis.cuda())
+
+    r = 2 * (ax * refl).sum(dim=1, keepdim=True)*ax - refl
+    return r
 
 
 def parse_intrinsics(intrinsics):
