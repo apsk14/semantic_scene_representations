@@ -6,7 +6,7 @@ import data_util
 import util
 
 from collections import namedtuple
-Observation = namedtuple('observation', 'instance_idx rgb depth xy pose intrinsics param')
+Observation = namedtuple('observation', 'instance_idx rgb depth uv pose intrinsics param')
 
 class Preloader():
     def __init__(self, paths, load_to_ram, loading_function):
@@ -121,12 +121,10 @@ class SceneInstanceDataset():
         else:
             depth = self.dummy
 
-        # x and y in the world coordinate sense -
-        # i.e., x indices columns from left to right and y indices rows from top to bottom
-        xy = np.mgrid[0:self.img_width, 0:self.img_height].astype(np.int32)
-        xy = torch.from_numpy(np.flip(xy, axis=0).copy()).long()
+        uv = np.mgrid[0:self.img_width, 0:self.img_height].astype(np.int32)
+        uv = torch.from_numpy(np.flip(uv, axis=0).copy()).long()
 
-        xy = xy.reshape(2,-1).transpose(1,0)
+        uv = uv.reshape(2,-1).transpose(1,0)
         rgbs = self.rgbs[idx].reshape(3, -1).transpose(1,0)
         depths = depth.reshape(-1, 1)
 
@@ -134,7 +132,7 @@ class SceneInstanceDataset():
                            rgb=torch.from_numpy(rgbs).float(),
                            pose=torch.from_numpy(self.poses[idx]).float(),
                            depth=torch.from_numpy(depths).float(),
-                           xy=xy,
+                           uv=uv,
                            param=torch.from_numpy(self.params[idx]).float() if self.has_params else torch.Tensor([0]).float(),
                            intrinsics=self.intrinsics)
 
@@ -152,6 +150,7 @@ class SceneClassDataset():
 
         self.samples_per_instance = samples_per_instance
 
+        print(root_dir)
         self.instance_dirs = sorted(glob(os.path.join(root_dir, '*/')))
         print('\n'.join(self.instance_dirs))
 

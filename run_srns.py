@@ -324,7 +324,7 @@ def test(model, dataset):
 
 
 def main():
-    if opt.specific_samples is not None:
+    if opt.specific_observation_idcs is not None:
         specific_observation_idcs = list(map(int, opt.specific_observation_idcs.split(',')))
     else:
         specific_observation_idcs = None
@@ -332,17 +332,19 @@ def main():
     if opt.train_test == 'train':
         dataset = SceneClassDataset(root_dir=opt.data_root,
                                     preload=not opt.no_preloading,
-                                    max_num_instances=opt.num_train_instances,
-                                    max_observations_per_instance=opt.num_images,
+                                    max_num_instances=opt.max_num_instances_train,
+                                    max_observations_per_instance=opt.max_num_observations_train,
                                     img_sidelength=opt.img_sidelength,
                                     specific_observation_idcs=specific_observation_idcs,
                                     samples_per_instance=1)
 
         if not opt.no_validation:
+            if opt.val_root is None:
+                raise ValueError("No validation directory passed.")
             val_dataset = SceneClassDataset(root_dir=opt.val_root,
                                             preload=not opt.no_preloading,
-                                            max_num_instances=opt.num_val_instances,
-                                            max_observations_per_instance=opt.num_val_images,
+                                            max_num_instances=opt.max_num_instances_val,
+                                            max_observations_per_instance=opt.max_num_observations_val,
                                             img_sidelength=opt.img_sidelength,
                                             samples_per_instance=1)
         else:
@@ -363,7 +365,7 @@ def main():
     elif opt.train_test == 'test':
         dataset = SceneClassDataset(root_dir=opt.data_root,
                                     preload=not opt.no_preloading,
-                                    max_num_instances=opt.num_objects,
+                                    max_num_instances=opt.max_num_instances_train,
                                     specific_observation_idcs=specific_observation_idcs,
                                     max_observations_per_instance=-1,
                                     samples_per_instance=1,

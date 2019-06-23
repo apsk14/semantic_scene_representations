@@ -29,15 +29,15 @@ class SRNsModel(nn.Module):
         self.has_params = has_params
 
         self.num_hidden_units_phi = 256
-        self.phi_layers = 4 # includes the in and out layers
-        self.rendering_layers = 5 # includes the in and out layers
+        self.phi_layers = 4  # includes the in and out layers
+        self.rendering_layers = 5  # includes the in and out layers
         self.sphere_trace_steps = tracing_steps
 
         self.fit_single_srn = fit_single_srn
 
-        if self.fit_single_srn: # Fit a single scene with a single SRN (no hypernetworks)
+        if self.fit_single_srn:  # Fit a single scene with a single SRN (no hypernetworks)
             self.phi = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
-                                                   num_hidden_layers=self.phi_layers-2,
+                                                   num_hidden_layers=self.phi_layers - 2,
                                                    in_features=3,
                                                    out_features=self.num_hidden_units_phi)
         else:
@@ -49,7 +49,7 @@ class SRNsModel(nn.Module):
                                                  hyper_num_hidden_layers=1,
                                                  hyper_hidden_ch=self.latent_dim,
                                                  hidden_ch=self.num_hidden_units_phi,
-                                                 num_hidden_layers=self.phi_layers-2,
+                                                 num_hidden_layers=self.phi_layers - 2,
                                                  in_ch=3,
                                                  out_ch=self.num_hidden_units_phi)
 
@@ -61,7 +61,7 @@ class SRNsModel(nn.Module):
                                                       input_resolution=128, img_sidelength=128)
         else:
             self.pixel_generator = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
-                                                               num_hidden_layers=self.rendering_layers-1,
+                                                               num_hidden_layers=self.rendering_layers - 1,
                                                                in_features=self.num_hidden_units_phi,
                                                                out_features=3,
                                                                outermost_linear=True)
@@ -74,12 +74,12 @@ class SRNsModel(nn.Module):
         # List of logs
         self.logs = list()
 
-        print("*"*100)
+        print("*" * 100)
         print(self)
-        print("*"*100)
+        print("*" * 100)
         print("Number of parameters:")
         util.print_network(self)
-        print("*"*100)
+        print("*" * 100)
 
     def get_regularization_loss(self, prediction, ground_truth):
         '''Computes regularization loss on final depth map (L_{depth} in eq. 6 in paper)
@@ -91,7 +91,7 @@ class SRNsModel(nn.Module):
         _, depth = prediction
 
         neg_penalty = (torch.min(depth, torch.zeros_like(depth)) ** 2)
-        return torch.mean(neg_penalty)*10000
+        return torch.mean(neg_penalty) * 10000
 
     def get_image_loss(self, prediction, ground_truth):
         '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
@@ -140,8 +140,8 @@ class SRNsModel(nn.Module):
 
         psnrs, ssims = list(), list()
         for i in range(batch_size):
-            p = pred_imgs[i].squeeze().transpose(1,2,0)
-            trgt = trgt_imgs[i].squeeze().transpose(1,2,0)
+            p = pred_imgs[i].squeeze().transpose(1, 2, 0)
+            trgt = trgt_imgs[i].squeeze().transpose(1, 2, 0)
 
             p = (p / 2.) + 0.5
             p = np.clip(p, a_min=0., a_max=1.)
@@ -210,17 +210,17 @@ class SRNsModel(nn.Module):
             name = prefix + name
 
             if not iter % every_n:
-                if type=='image':
+                if type == 'image':
                     writer.add_image(name, content.detach().cpu().numpy(), iter)
                     writer.add_scalar(name + '_min', content.min(), iter)
                     writer.add_scalar(name + '_max', content.max(), iter)
-                elif type=='figure':
+                elif type == 'figure':
                     writer.add_figure(name, content, iter, close=True)
-                elif type=='histogram':
+                elif type == 'histogram':
                     writer.add_histogram(name, content.detach().cpu().numpy(), iter)
-                elif type=='scalar':
+                elif type == 'scalar':
                     writer.add_scalar(name, content.detach().cpu().numpy(), iter)
-                elif type=='embedding':
+                elif type == 'embedding':
                     writer.add_embedding(mat=content, global_step=iter)
 
         if not iter % 100:
@@ -232,7 +232,7 @@ class SRNsModel(nn.Module):
                                                          normalize=True).cpu().detach().numpy(),
                              iter)
 
-            rgb_loss = ((predictions.float().cuda() - trgt_imgs.float().cuda())**2).mean(dim=2, keepdim=True)
+            rgb_loss = ((predictions.float().cuda() - trgt_imgs.float().cuda()) ** 2).mean(dim=2, keepdim=True)
             rgb_loss = util.lin2img(rgb_loss)
 
             fig = util.show_images([rgb_loss[i].detach().cpu().numpy().squeeze()
@@ -245,17 +245,16 @@ class SRNsModel(nn.Module):
             # depth_maps[trgt_depths==1] = 0.
             depth_maps_plot = util.lin2img(depth_maps)
             writer.add_image(prefix + "pred_depth",
-                             torchvision.utils.make_grid(depth_maps_plot.repeat(1,3,1,1),
+                             torchvision.utils.make_grid(depth_maps_plot.repeat(1, 3, 1, 1),
                                                          scale_each=True,
                                                          normalize=True).cpu().detach().numpy(),
                              iter)
 
-
-            depth_loss = (depth_maps.float().cuda() - trgt_depths.float().cuda())**2
-            depth_loss[trgt_depths==1] = 0.
+            depth_loss = (depth_maps.float().cuda() - trgt_depths.float().cuda()) ** 2
+            depth_loss[trgt_depths == 1] = 0.
             depth_loss = util.lin2img(depth_loss)
 
-            if np.any(depth_loss[0].detach().cpu().numpy()!=0.):
+            if np.any(depth_loss[0].detach().cpu().numpy() != 0.):
                 fig = util.show_images([depth_loss[i].detach().cpu().numpy().squeeze()
                                         for i in range(batch_size)])
                 writer.add_figure(prefix + 'depth_error_fig',
@@ -263,10 +262,9 @@ class SRNsModel(nn.Module):
                                   iter,
                                   close=True)
 
-
-        depth_loss = (depth_maps.float().cuda() - trgt_depths.float().cuda())**2
-        depth_loss[trgt_depths==1] = 0.
-        if np.any(depth_loss[0].detach().cpu().numpy()!=0.):
+        depth_loss = (depth_maps.float().cuda() - trgt_depths.float().cuda()) ** 2
+        depth_loss[trgt_depths == 1] = 0.
+        if np.any(depth_loss[0].detach().cpu().numpy() != 0.):
             writer.add_scalar(prefix + "depth_error", depth_loss.mean(), iter)
 
         writer.add_scalar(prefix + "out_min", predictions.min(), iter)
@@ -278,7 +276,6 @@ class SRNsModel(nn.Module):
         if iter:
             writer.add_scalar(prefix + "latent_reg_loss", self.latent_reg_loss, iter)
 
-
     def forward(self, input, z=None):
         self.logs = list()
 
@@ -287,7 +284,7 @@ class SRNsModel(nn.Module):
         instance_idcs = observation.instance_idx.long().cuda()
         pose = observation.pose.cuda()
         intrinsics = observation.intrinsics.cuda()
-        xy = observation.xy.cuda().float()
+        uv = observation.uv.cuda().float()
 
         if self.fit_single_srn:
             phi = self.phi
@@ -307,8 +304,8 @@ class SRNsModel(nn.Module):
 
         points_xyz, depth_maps, log = self.ray_marcher(cam2world=pose,
                                                        intrinsics=intrinsics,
-                                                       xy=xy,
-                                                       feature_net=phi)
+                                                       uv=uv,
+                                                       phi=phi)
         self.logs.extend(log)
 
         v = phi(points_xyz)
@@ -316,17 +313,16 @@ class SRNsModel(nn.Module):
 
         # Calculate normal map
         with torch.no_grad():
-            batch_size = xy.shape[0]
-            x_cam = xy[:,:,0].view(batch_size, -1)
-            y_cam = xy[:,:,1].view(batch_size, -1)
+            batch_size = uv.shape[0]
+            x_cam = uv[:, :, 0].view(batch_size, -1)
+            y_cam = uv[:, :, 1].view(batch_size, -1)
             z_cam = depth_maps.view(batch_size, -1)
 
             normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
             self.logs.append(('image', 'normals',
                               torchvision.utils.make_grid(normals, scale_each=True, normalize=True), 100))
 
-
-        if self.mode == 'hyper':
+        if not self.fit_single_srn:
             self.logs.append(('embedding', '', self.latent_codes.weight, 500))
             self.logs.append(('scalar', 'embed_min', self.z.min(), 1))
             self.logs.append(('scalar', 'embed_max', self.z.max(), 1))
@@ -335,5 +331,3 @@ class SRNsModel(nn.Module):
             self.counter += 1
 
         return novel_views, depth_maps
-
-
