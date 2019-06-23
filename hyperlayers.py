@@ -102,6 +102,7 @@ class LookupLinear(nn.Module):
 
 
 class HyperLayer(nn.Module):
+    '''A hypernetwork that predicts a single Dense Layer, including LayerNorm and a ReLU.'''
     def __init__(self,
                  in_ch,
                  out_ch,
@@ -121,10 +122,16 @@ class HyperLayer(nn.Module):
         )
 
     def forward(self, hyper_input):
+        '''
+        :param hyper_input: input to hypernetwork.
+        :return: nn.Module; predicted fully connected network.
+        '''
         return nn.Sequential(self.hyper_linear(hyper_input), self.norm_nl)
 
 
 class HyperFC(nn.Module):
+    '''Builds a hypernetwork that predicts a fully connected neural network.
+    '''
     def __init__(self,
                  hyper_in_ch,
                  hyper_num_hidden_layers,
@@ -158,6 +165,10 @@ class HyperFC(nn.Module):
 
 
     def forward(self, hyper_input):
+        '''
+        :param hyper_input: Input to hypernetwork.
+        :return: nn.Module; Predicted fully connected neural network.
+        '''
         net = []
         for i in range(len(self.layers)):
             net.append(self.layers[i](hyper_input))
@@ -195,6 +206,7 @@ def last_hyper_layer_init(m):
 
 
 class HyperLinear(nn.Module):
+    '''A hypernetwork that predicts a single linear layer (weights & biases).'''
     def __init__(self,
                  in_ch,
                  out_ch,
