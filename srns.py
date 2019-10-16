@@ -1,13 +1,17 @@
 import torch
+import os
 import torch.nn as nn
 import numpy as np
+import random
 import cv2
+import imageio
 
 import torchvision
 from custom_layers import *
 import util
 
 from dataio import Observation
+import data_util
 import skimage.measure, skimage.transform
 from torch.nn import functional as F
 
@@ -27,6 +31,9 @@ class SRNsModel(nn.Module):
 
         self.latent_dim = latent_dim
         self.has_params = has_params
+        self.colors = [(random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)) for i in range(6)]
+        self.colors[0] = (1,1,1)
+        self.colors = np.array(self.colors)
 
         self.num_hidden_units_phi = 256
         self.phi_layers = 4  # includes the in and out layers
@@ -66,10 +73,16 @@ class SRNsModel(nn.Module):
                                                                out_features=3,
                                                                outermost_linear=True)
 
+        self.class_generator = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
+                                                           num_hidden_layers=self.rendering_layers - 1,
+                                                           in_features=self.num_hidden_units_phi,
+                                                           out_features=6,
+                                                           outermost_linear=True)
         self.counter = 0
 
         # Losses
         self.l2_loss = nn.MSELoss(reduction='mean')
+        self.cross_entropy_loss = nn.CrossEntropyLoss(ignore_index=0, reduction='mean')
 
         # List of logs
         self.logs = list()
@@ -88,7 +101,7 @@ class SRNsModel(nn.Module):
         :param ground_truth: Ground-truth (unused).
         :return: Regularization loss on final depth map.
         '''
-        _, depth = prediction
+        _, _, depth, _, _ = prediction
 
         neg_penalty = (torch.min(depth, torch.zeros_like(depth)) ** 2)
         return torch.mean(neg_penalty) * 10000
@@ -100,13 +113,90 @@ class SRNsModel(nn.Module):
         :param ground_truth: Ground-truth (unused).
         :return: image reconstruction loss.
         '''
-        pred_imgs, _ = prediction
-        trgt_imgs, _ = ground_truth
+        pred_imgs, _, _, _, _ = prediction
+        trgt_imgs, _, _ = ground_truth
 
         trgt_imgs = trgt_imgs.cuda()
 
         loss = self.l2_loss(pred_imgs, trgt_imgs)
         return loss
+
+    def get_seg_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        _, pred_segs, _, _, _ = prediction
+        pred_segs = pred_segs.permute(0, 2, 1)
+
+        _, trgt_segs, _ = ground_truth
+        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long()
+        trgt_segs = trgt_segs.cuda()
+
+
+        loss = self.cross_entropy_loss(pred_segs, trgt_segs)
+        return loss
+
+    
+    def get_pc_loss(self, prediction, input):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        _, _, _, point_cloud, _ = prediction
+        point_cloud = point_cloud.permute(0, 2, 1)
+
+        observation = Observation(*input)
+        labels = observation.labels.cuda().long()
+
+        loss = self.cross_entropy_loss(point_cloud, labels)
+
+        return loss
+
+    def get_IOU_loss(self, prediction, input):
+
+        _, _, _, point_cloud, _ = prediction
+        pred_cloud = point_cloud.permute(0, 2, 1)
+        preds = F.softmax(pred_cloud, dim=1)
+        numClasses = preds.shape[1]
+
+        observation = Observation(*input)
+        labels = observation.labels.cuda().long()
+        labels_onehot = self.toOneHot(labels, numClasses)
+
+        per_pix_intersection = preds*labels_onehot
+        intersection = (per_pix_intersection).sum(dim=2)
+        union = (preds + labels_onehot - per_pix_intersection).sum(dim=2)
+
+        loss = intersection/union
+
+        return -loss.mean()
+
+    def get_img_IOU_loss(self, prediction, ground_truth):
+
+        _, pred_segs, _, _, _ = prediction
+        pred_segs = pred_segs.permute(0, 2, 1)
+        _, trgt_segs, _ = ground_truth
+        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().cuda().long()
+
+
+        preds = F.softmax(pred_segs, dim=1)
+        numClasses = preds.shape[1]
+
+        labels_onehot = self.toOneHot(trgt_segs, numClasses)
+
+        per_pix_intersection = preds*labels_onehot
+        intersection = (per_pix_intersection).sum(dim=2)
+        union = (preds + labels_onehot - per_pix_intersection).sum(dim=2)
+
+        loss = intersection/union
+
+        return -loss.mean()
+
 
     def get_latent_loss(self):
         '''Computes loss on latent code vectors (L_{latent} in eq. 6 in paper)
@@ -126,8 +216,8 @@ class SRNsModel(nn.Module):
         :param ground_truth: Ground truth.
         :return: (psnr, ssim): tuple of floats
         '''
-        pred_imgs, _ = prediction
-        trgt_imgs, _ = ground_truth
+        pred_imgs, _, _, _, _ = prediction
+        trgt_imgs, _, _ = ground_truth
 
         trgt_imgs = trgt_imgs.cuda()
         batch_size = pred_imgs.shape[0]
@@ -157,7 +247,7 @@ class SRNsModel(nn.Module):
         return psnrs, ssims
 
     def get_comparisons(self, model_input, prediction, ground_truth=None):
-        predictions, depth_maps = prediction
+        predictions, seg_pred, depth_maps, point_cloud = prediction
 
         batch_size = predictions.shape[0]
 
@@ -165,7 +255,7 @@ class SRNsModel(nn.Module):
 
         # Parse model input.
         intrinsics = observation.intrinsics.cuda()
-        xy = observation.xy.cuda().float()
+        xy = observation.uv.cuda().float()
 
         x_cam = xy[:, :, 0].view(batch_size, -1)
         y_cam = xy[:, :, 1].view(batch_size, -1)
@@ -177,18 +267,144 @@ class SRNsModel(nn.Module):
         predictions = util.lin2img(predictions)
 
         if ground_truth is not None:
-            trgt_imgs, trgt_depths = ground_truth
+            trgt_imgs, trgt_segs, trgt_depths = ground_truth
             trgt_imgs = util.lin2img(trgt_imgs)
+            trgt_segs = util.lin2img(trgt_segs)
 
             return torch.cat((normals.cpu(), predictions.cpu(), trgt_imgs.cpu()), dim=3).numpy()
         else:
             return torch.cat((normals.cpu(), predictions.cpu()), dim=3).numpy()
 
+
+    def toOneHot(self, input, numClasses):
+        n, l = input.shape
+        one_hot = torch.zeros(n, numClasses, l).scatter_(1, input.view(n, 1, l).cpu(), 1).cuda()
+        return one_hot
+
+
     def get_output_img(self, prediction):
-        pred_imgs, _ = prediction
+        pred_imgs, _, _, _, _ = prediction
         return util.lin2img(pred_imgs)
 
-    def write_updates(self, writer, predictions, ground_truth, iter, prefix=''):
+
+    def get_output_seg(self, prediction):
+        _, pred_segs, _, _, _ = prediction
+        pred_segs, seg_idx = torch.max(pred_segs, dim=2)
+        seg_idx = seg_idx[:, :, None]
+        output_seg = util.lin2img(seg_idx)
+        output_seg = (self.colors[output_seg.cpu().numpy()])[:,0,:,:].transpose(0, 3, 1, 2)
+        return output_seg
+
+    def get_output_pc(self, prediction, input, out_fn, real_fn):
+        observation = Observation(*input)
+        pts = observation.pts.cpu().numpy().squeeze()
+        labels = observation.labels.cpu().numpy().squeeze()
+        _, _, _, pc_classes, _ = prediction
+        _, pc_idx = torch.max(pc_classes, dim=2)
+        label_colors = self.colors[pc_idx.cpu().numpy()].squeeze()
+        label_colors_real = self.colors[labels].squeeze()
+        src_pc = np.matrix(np.concatenate((pts, label_colors), axis=1))
+        real_pc = np.matrix(np.concatenate((pts, label_colors_real), axis=1))
+        with open(out_fn, 'wb') as f:
+            for line in src_pc:
+                np.savetxt(f, line)
+
+        with open(real_fn, 'wb') as f:
+            for line in real_pc:
+                np.savetxt(f, line)
+
+
+    def get_IOU_vals(self, prediction, input, confusion, part_intersect, part_union): # had arg confusion
+        # confusion vector is [true pos, false pos, false neg]
+        observation = Observation(*input)
+        real_label = observation.labels.cpu().numpy().squeeze()
+        _, _, _, pc_classes, _ = prediction
+        _, pred_labels = torch.max(pc_classes, dim=2)
+        pred_labels = pred_labels.cpu().numpy().squeeze()
+
+        pred_labels = np.delete(pred_labels, np.where(real_label == 0), axis=0)
+        real_label = np.delete(real_label, np.where(real_label == 0), axis=0)
+
+        # num_classes = np.max(real_label) + 1
+        num_classes = 5
+        true_pos = np.zeros((num_classes, 1), dtype=int)
+        false_pos = np.zeros((num_classes, 1), dtype=int)
+        false_neg = np.zeros((num_classes, 1), dtype=int)
+        cur_shape_iou_tot = 0.0
+        cur_shape_iou_cnt = 0
+        for cur_class in range(1, num_classes + 1):
+
+            cur_gt_mask = (real_label == cur_class)
+            cur_pred_mask = (pred_labels == cur_class)
+
+            has_gt = (np.sum(cur_gt_mask) > 0)
+            has_pred = (np.sum(cur_pred_mask) > 0)
+
+            if has_gt or has_pred:
+                intersect = np.sum(cur_gt_mask & cur_pred_mask)
+                union = np.sum(cur_gt_mask | cur_pred_mask)
+                iou = intersect / union
+
+                cur_shape_iou_tot += iou
+                cur_shape_iou_cnt += 1
+
+                part_intersect[cur_class - 1] += intersect
+                part_union[cur_class - 1] += union
+
+            # expected_true = pred_labels[np.where(real_label == cur_class)]
+            # expected_false = pred_labels[np.where(real_label != cur_class)]
+            # true_pos[cur_class-1] = expected_true[np.where(expected_true == cur_class)].shape[0]
+            # false_neg[cur_class-1] = expected_true[np.where(expected_true != cur_class)].shape[0]
+            # false_pos[cur_class-1] = expected_false[np.where(expected_false == cur_class)].shape[0]
+        # IOU = self.calc_mIOU(np.concatenate((true_pos, false_pos, false_neg), axis=1))
+        # confusion += np.concatenate((true_pos, false_pos, false_neg), axis=1)
+        return cur_shape_iou_tot / cur_shape_iou_cnt
+
+
+
+    def calc_mIOU(self, confusion):
+        check_empty = np.sum(confusion, axis=1)
+        empty = np.where(check_empty == 0)
+        confusion = np.delete(confusion, empty, axis=0)
+        num_classes = confusion.shape[0]
+        #print(confusion)
+        true_pos = confusion[:, 0]
+        false_pos = confusion[:, 1]
+        false_neg = confusion[:, 2]
+        IOU = np.divide(true_pos, (false_pos + false_neg + true_pos),  where=(false_pos + false_neg + true_pos) != 0)
+        mIOU = np.sum(IOU, axis=0)/num_classes
+        return mIOU
+
+    def get_pc(self, pts_real, label_real, pts_pred, label_pred, iter):
+        print('outputting point cloud')
+        out_fn = '/home/apsk14/data/srn_point_clouds_2/%s.txt' % str(iter)
+        os.makedirs(os.path.dirname(out_fn), exist_ok=True)
+        real_fn = '/home/apsk14/data/srn_point_clouds_2/real_%s.txt' % str(iter)
+        os.makedirs(os.path.dirname(out_fn), exist_ok=True)
+
+
+        _, pts_labels = torch.max(label_pred, dim=2)
+        label_colors = self.colors[pts_labels.cpu().numpy()]
+        real_colors = self.colors[label_real.cpu().numpy()]
+        labels_chosen = label_colors[0, :, :]
+        real_chosen = real_colors[0, :, :]
+
+        pts_real = pts_real.cpu().numpy()
+        pts_pred = pts_pred.cpu().numpy()
+        pts_real_chosen = pts_real[0,:,:]
+        pts_pred_chosen = pts_pred[0,:,:]
+
+        src_pc = np.matrix(np.concatenate((pts_pred_chosen, np.ones_like(pts_pred_chosen)), axis=1))
+        real_pc = np.matrix(np.concatenate((pts_real_chosen, real_chosen), axis=1))
+        with open(out_fn, 'wb') as f:
+            for line in src_pc:
+                np.savetxt(f, line)
+
+        with open(real_fn, 'wb') as f:
+            for line in real_pc:
+                np.savetxt(f, line)
+
+    def write_updates(self, writer, input, predictions, ground_truth, iter, prefix=''):
         '''Writes tensorboard summaries using tensorboardx api.
 
         :param writer: tensorboardx writer object.
@@ -197,11 +413,21 @@ class SRNsModel(nn.Module):
         :param iter: Iteration number.
         :param prefix: Every summary will be prefixed with this string.
         '''
-        predictions, depth_maps = predictions
-        trgt_imgs, trgt_depths = ground_truth
+        predictions, seg_preds, depth_maps, label_pred, pts_pred = predictions
+        print(pts_pred.shape)
+        trgt_imgs, trgt_segs, trgt_depths = ground_truth
+
+        observation = Observation(*input)
+        pts_real = observation.pts.cuda()
+        label_real = observation.labels
 
         trgt_imgs = trgt_imgs.cuda()
+        trgt_segs = trgt_segs.cuda()
         trgt_depths = trgt_depths.cuda()
+        colors = self.colors
+
+        seg_preds, seg_idx = torch.max(seg_preds, dim=2)
+        seg_idx = seg_idx[:,:,None]
 
         batch_size, num_samples, _ = predictions.shape
 
@@ -223,14 +449,29 @@ class SRNsModel(nn.Module):
                 elif type == 'embedding':
                     writer.add_embedding(mat=content, global_step=iter)
 
-        if not iter % 100:
+        if not iter % 50:
+            # RGB image outputs
             output_vs_gt = torch.cat((predictions, trgt_imgs), dim=0)
             output_vs_gt = util.lin2img(output_vs_gt)
+            print('MACKSi', torch.max(output_vs_gt))
+            print('DISPRGB', output_vs_gt.shape)
             writer.add_image(prefix + "Output_vs_gt",
                              torchvision.utils.make_grid(output_vs_gt,
                                                          scale_each=False,
                                                          normalize=True).cpu().detach().numpy(),
                              iter)
+
+            # Segmentation image outputs
+            output_vs_gt_seg = torch.cat((seg_idx.int(), trgt_segs.int()), dim=0)
+            output_vs_gt_seg = util.lin2img(output_vs_gt_seg).int()
+            output_vs_gt_seg = torch.from_numpy(colors[output_vs_gt_seg.cpu().numpy()].squeeze()).permute(0,3,1,2)
+            print('DISPSEG', output_vs_gt_seg.shape)
+            writer.add_image(prefix + "Output_vs_gt_seg",
+                             torchvision.utils.make_grid(output_vs_gt_seg,
+                                                         scale_each=False,
+                                                         normalize=False).cpu().detach().numpy(),
+                             iter)
+
 
             rgb_loss = ((predictions.float().cuda() - trgt_imgs.float().cuda()) ** 2).mean(dim=2, keepdim=True)
             rgb_loss = util.lin2img(rgb_loss)
@@ -262,6 +503,8 @@ class SRNsModel(nn.Module):
                                   iter,
                                   close=True)
 
+            #self.get_pc(pts_real, label_real, pts_pred, label_pred, iter)
+
         depth_loss = (depth_maps.float().cuda() - trgt_depths.float().cuda()) ** 2
         depth_loss[trgt_depths == 1] = 0.
         if np.any(depth_loss[0].detach().cpu().numpy() != 0.):
@@ -285,6 +528,9 @@ class SRNsModel(nn.Module):
         pose = observation.pose.cuda()
         intrinsics = observation.intrinsics.cuda()
         uv = observation.uv.cuda().float()
+        pts = observation.pts.cuda()
+
+
 
         if self.fit_single_srn:
             phi = self.phi
@@ -309,7 +555,13 @@ class SRNsModel(nn.Module):
         self.logs.extend(log)
 
         v = phi(points_xyz)
+        p = phi(pts)
+
         novel_views = self.pixel_generator(v)
+        novel_views_seg = self.class_generator(v)
+        point_cloud = self.class_generator(p)
+
+
 
         # Calculate normal map
         with torch.no_grad():
@@ -330,4 +582,5 @@ class SRNsModel(nn.Module):
         if self.training:
             self.counter += 1
 
-        return novel_views, depth_maps
+        return novel_views, novel_views_seg, depth_maps, point_cloud, points_xyz
+

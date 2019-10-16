@@ -5,6 +5,7 @@ from torch.nn import functional as F
 import util
 
 
+
 def compute_normal_map(x_img, y_img, z, intrinsics):
     cam_coords = lift(x_img, y_img, z, intrinsics)
     cam_coords = util.lin2img(cam_coords)

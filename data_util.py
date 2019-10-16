@@ -3,6 +3,8 @@ import argparse
 import functools
 
 import cv2
+
+import pathlib
 import numpy as np
 import imageio
 from skimage import io, transform
@@ -16,6 +18,7 @@ import subprocess
 import shutil
 import struct
 import collections
+import json
 
 import skimage
 import skimage.transform
@@ -38,8 +41,11 @@ def params_to_filename(params):
 
 
 def load_rgb(path, sidelength=None):
-    img = imageio.imread(path)[:,:,:3]
+    img = imageio.imread(path)
+    alpha_channel = img[:, :, 3:].repeat(3, axis=2)
+    img = img[:, :, :3]
     img = skimage.img_as_float32(img)
+    img[alpha_channel == 0] = 1.0
 
     img = square_crop_img(img)
 
@@ -48,7 +54,29 @@ def load_rgb(path, sidelength=None):
 
     img -= 0.5
     img *= 2.
+    img = img.transpose(2, 0, 1)
+
+    return img
+
+
+def load_seg(path, sidelength=None):
+    img = imageio.imread(path)[:,:,:]
+
+    img = square_crop_img(img)
+    if sidelength is not None:
+        img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_NEAREST)
+
+
+    img = img[:,:,0:1]
+
+    # imageio.imwrite('/home/apsk14/data/test_im/test.png', img*(255/5))
+    # print('DONE')
+
+
+
     img = img.transpose(2,0,1)
+
+
     return img
 
 
@@ -87,9 +115,116 @@ def load_depth(path, sidelength=None):
     return img
 
 
+# def load_pts(path):
+#     with open(path, 'r') as fin:
+#         lines = [item.rstrip() for item in fin]
+#         pts = np.array([[float(line.split()[0]), float(line.split()[1]), float(line.split()[2])] for line in lines],
+#                        dtype=np.float32)
+#         return pts
+
+
+def load_pts(path):
+    with open(path, 'r') as fin:
+        lines = [item.rstrip() for item in fin]
+
+        pts = np.array([[float(line.split()[0]), float(line.split()[1]), float(line.split()[2])] for line in lines],
+                       dtype=np.float32)
+
+        rgb = np.array([[int(line.split()[6]), int(line.split()[7]), int(line.split()[8])] for line in lines], dtype=np.float32)
+        rgb = (rgb/float(255))
+
+        return pts, rgb
+    
+    
+def load_label(path, lmap, part_name2id, part_old2new):
+    #global ins_to_seg
+    #ins_to_seg = dict()
+    with open(path, 'r') as fin:
+        label = np.zeros((10000), dtype=np.int)
+        for i, item in enumerate(fin.readlines()):
+            l = int(item.rstrip())
+            assert str(l) in lmap.keys()
+            old_name = lmap[str(l)]
+            while old_name not in part_old2new.keys():
+                old_name = '/'.join(old_name.split('/')[:-1])
+            new_name = part_old2new[old_name]
+            while len(new_name) > 0:
+                if new_name in part_name2id.keys():
+                    label[i] = int(part_name2id[new_name])
+                    #ins_to_seg[int(l)] = int(part_name2id[new_name])
+                new_name = '/'.join(new_name.split('/')[:-1])
+        return label
+    
+
+def load_label_map(path):
+    global label_map
+    label_map = {}
+    label_map = dict()
+
+    def traverse(node, code):
+        global label_map
+        if code == '':
+            cur_code = node['name']
+        else:
+            cur_code = code + '/' + node['name']
+        if 'children' in node.keys():
+            for item in node['children']:
+                traverse(item, cur_code)
+        elif 'objs' in node.keys() and len(node['objs']) > 0:
+            label_map[str(node['id'])] = cur_code
+
+    with open(path, 'r') as fin:
+        data = json.load(fin)[0]
+        traverse(data, '')
+    return label_map
+
+
+def load_transfer_map(path, part_name2id):
+    global ins_to_seg
+    ins_to_seg = {}
+    ins_to_seg = dict()
+
+    def traverse(node, code):
+        global ins_to_seg
+        if code == '':
+            cur_code = node['name']
+        else:
+            cur_code = code + '/' + node['name']
+
+        if 'objs' in node.keys() and len(node['objs']) > 0:
+            temp_code = cur_code
+            while len(temp_code) > 0:
+                if temp_code in part_name2id.keys():
+                    ins_to_seg[node['id']] = part_name2id[temp_code]
+                    break
+                temp_code = os.path.split(temp_code)[0]
+            if len(temp_code) == 0:
+                ins_to_seg[node['id']] = 0
+
+        if 'children' in node.keys():
+            for item in node['children']:
+                traverse(item, cur_code)
+
+    with open(path, 'r') as fin:
+        data = json.load(fin)[0]
+        traverse(data, '')
+    return ins_to_seg
+
+
+def transfer_labels(img_path, ins_to_seg, sidelength):
+    #print(img_path)
+    img = load_seg(img_path, sidelength)
+    uni, indices = np.unique(img, return_inverse=True)
+    for i in np.arange(uni.size):
+        uni[i] = ins_to_seg[uni[i]]
+    swapped_im = uni[indices].reshape(img.shape)
+    return swapped_im
+
+
 def cond_mkdir(path):
     if not os.path.exists(path):
         os.makedirs(path)
+
 
 
 def square_crop_img(img):

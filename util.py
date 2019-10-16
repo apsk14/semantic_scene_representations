@@ -1,4 +1,4 @@
-import os, struct, math
+import os, struct, math, copy
 import numpy as np
 import torch
 from glob import glob
@@ -115,7 +115,7 @@ def custom_load(model, path, discriminator=None, overwrite_embeddings=False, ove
     whole_dict = torch.load(checkpoint_path)
 
     if overwrite_embeddings:
-        del whole_dict['model']['obj_embedding.weight']
+        del whole_dict['model']['latent_codes.weight']
 
     if overwrite_renderer:
         keys_to_remove = [key for key in whole_dict['model'].keys() if 'rendering_net' in key]
@@ -126,6 +126,54 @@ def custom_load(model, path, discriminator=None, overwrite_embeddings=False, ove
     state = model.state_dict()
     state.update(whole_dict['model'])
     model.load_state_dict(state)
+
+    for name, param in model.named_parameters():
+        if name == 'latent_codes.weight':
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+
+def compare_models(model, path1, path2):
+    if os.path.isdir(path1):
+        checkpoint_path1 = sorted(glob(os.path.join(path, "*.pth")))[-1]
+    else:
+        checkpoint_path1 = path1
+
+    if os.path.isdir(path2):
+        checkpoint_path2 = sorted(glob(os.path.join(path, "*.pth")))[-1]
+    else:
+        checkpoint_path2 = path2
+
+    whole_dict1 = torch.load(checkpoint_path1)
+    whole_dict2 = torch.load(checkpoint_path2)
+    model1 = model
+    model2 = copy.deepcopy(model)
+
+    print(whole_dict1['model']['latent_codes.weight'])
+    print(whole_dict2['model']['latent_codes.weight'])
+
+    del whole_dict1['model']['latent_codes.weight']
+    del whole_dict2['model']['latent_codes.weight']
+
+    print('*'*20)
+
+
+    state = model1.state_dict()
+    state.update(whole_dict1['model'])
+    model1.load_state_dict(state)
+
+    state = model2.state_dict()
+    state.update(whole_dict2['model'])
+    model2.load_state_dict(state)
+
+    for ((name1, param1), (name2, param2)) in zip(model1.named_parameters(),model2.named_parameters()):
+        print(name1, ":", torch.norm(param1 - param2).detach().cpu().numpy())
+
+    # for name, param in model2.named_parameters():
+    #     print(name, ":", param)
+
+    exit()
+
 
     if discriminator:
         discriminator.load_state_dict(whole_dict['discriminator'])

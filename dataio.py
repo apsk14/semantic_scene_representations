@@ -6,7 +6,7 @@ import data_util
 import util
 
 from collections import namedtuple
-Observation = namedtuple('observation', 'instance_idx rgb depth uv pose intrinsics param')
+Observation = namedtuple('observation', 'instance_idx rgb seg depth uv pose intrinsics param pts rgb_pts labels')
 
 class Preloader():
     def __init__(self, paths, load_to_ram, loading_function):
@@ -43,16 +43,23 @@ class SceneInstanceDataset():
                  load_to_ram,
                  specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
                  img_sidelength=None,
-                 num_images=-1):
+                 num_images=-1,
+                 part_name2id={},
+                 part_old2new={}):
         super().__init__()
 
         self.instance_idx = instance_idx
 
+        object_name = instance_dir.split('/')[-4]
+        object_dir = instance_dir.split('/')[-3]
+        og_dir = '/media/data1/apsk14/srn_seg_data/' + object_name + '/' + object_dir
+
         color_dir = os.path.join(instance_dir, 'rgb')
+        seg_dir = os.path.join(instance_dir, 'seg')
         pose_dir = os.path.join(instance_dir, 'pose')
         depth_dir = os.path.join(instance_dir, 'depth')
         param_dir = os.path.join(instance_dir, 'params')
-
+        pn_dir = os.path.join(og_dir, os.path.basename(os.path.split(instance_dir)[0]), 'partnet')
         if not os.path.isdir(color_dir):
             print("Error! root dir %s is wrong" % instance_dir)
             return
@@ -61,7 +68,12 @@ class SceneInstanceDataset():
         self.has_params = os.path.isdir(param_dir)
 
         self.color_paths = sorted(data_util.glob_imgs(color_dir))
+        self.seg_paths = sorted(data_util.glob_imgs(seg_dir))
         self.pose_paths = sorted(glob(os.path.join(pose_dir, '*.txt')))
+        self.pts_path = os.path.join(pn_dir, 'point_sample', 'sample-points-all-pts-nor-rgba-10000.txt')
+        self.labels_path = os.path.join(pn_dir, 'point_sample', 'sample-points-all-label-10000.txt')
+        self.mapping_path = os.path.join(pn_dir, 'result.json')
+        self.transfer_path = os.path.join(pn_dir, 'result_after_merging.json')
 
         if self.has_depth:
             self.depth_paths = sorted(glob(os.path.join(depth_dir, '*.png')))
@@ -75,19 +87,30 @@ class SceneInstanceDataset():
 
         if specific_observation_idcs is not None:
             self.color_paths = pick(self.color_paths, specific_observation_idcs)
+            self.seg_paths = pick(self.seg_paths, specific_observation_idcs)
             self.pose_paths = pick(self.pose_paths, specific_observation_idcs)
             self.depth_paths = pick(self.depth_paths, specific_observation_idcs)
             self.param_paths = pick(self.param_paths, specific_observation_idcs)
         elif num_images != -1:
             idcs = np.linspace(0, stop=len(self.color_paths), num=num_images, endpoint=False, dtype=int)
             self.color_paths = pick(self.color_paths, idcs)
+            self.seg_paths = pick(self.seg_paths, idcs)
             self.pose_paths = pick(self.pose_paths, idcs)
             self.depth_paths = pick(self.depth_paths, idcs)
             self.param_paths = pick(self.param_paths, idcs)
 
+        load_to_ram = False
+
+        transfer_map = data_util.load_transfer_map(self.transfer_path, part_name2id)
+
+
         self.rgbs = Preloader(self.color_paths,
                               load_to_ram=load_to_ram,
                               loading_function=lambda path: data_util.load_rgb(path, sidelength=img_sidelength))
+
+        self.segs = Preloader(self.seg_paths,
+                              load_to_ram=load_to_ram,
+                              loading_function=lambda path: data_util.transfer_labels(path, transfer_map, sidelength=img_sidelength))
         self.poses = Preloader(self.pose_paths,
                                load_to_ram=load_to_ram,
                                loading_function=data_util.load_pose)
@@ -97,6 +120,11 @@ class SceneInstanceDataset():
         self.params = Preloader(self.param_paths,
                                 load_to_ram=load_to_ram,
                                 loading_function=data_util.load_params)
+
+        self.pts, self.rgb_pts = data_util.load_pts(self.pts_path)
+
+        label_map = data_util.load_label_map(self.mapping_path)
+        self.labels = data_util.load_label(self.labels_path, label_map, part_name2id, part_old2new)
 
         self.img_width, self.img_height = self.rgbs[0].shape[1], self.rgbs[0].shape[2]
 
@@ -110,7 +138,7 @@ class SceneInstanceDataset():
         print(instance_dir)
         print(intrinsics)
         print(world2cam_poses)
-        print(len(self.rgbs), len(self.poses), len(self.depths))
+        print(len(self.rgbs), len(self.segs), len(self.poses), len(self.depths))
 
     def __len__(self):
         return len(self.pose_paths)
@@ -125,16 +153,21 @@ class SceneInstanceDataset():
         uv = torch.from_numpy(np.flip(uv, axis=0).copy()).long()
 
         uv = uv.reshape(2,-1).transpose(1,0)
-        rgbs = self.rgbs[idx].reshape(3, -1).transpose(1,0)
+        rgbs = self.rgbs[idx].reshape(3, -1).transpose(1, 0)
+        segs = self.segs[idx].reshape(1, -1).transpose(1, 0)
         depths = depth.reshape(-1, 1)
 
         return Observation(instance_idx=torch.Tensor([self.instance_idx]).squeeze(),
                            rgb=torch.from_numpy(rgbs).float(),
+                           seg=torch.from_numpy(segs).int(),
                            pose=torch.from_numpy(self.poses[idx]).float(),
                            depth=torch.from_numpy(depths).float(),
                            uv=uv,
                            param=torch.from_numpy(self.params[idx]).float() if self.has_params else torch.Tensor([0]).float(),
-                           intrinsics=self.intrinsics)
+                           intrinsics=self.intrinsics,
+                           pts=torch.from_numpy(self.pts),
+                           rgb_pts=torch.from_numpy(self.rgb_pts),
+                           labels=torch.from_numpy(self.labels))
 
 
 class SceneClassDataset():
@@ -150,6 +183,7 @@ class SceneClassDataset():
 
         self.samples_per_instance = samples_per_instance
 
+
         print(root_dir)
         self.instance_dirs = sorted(glob(os.path.join(root_dir, '*/')))
         print('\n'.join(self.instance_dirs))
@@ -159,12 +193,21 @@ class SceneClassDataset():
         if max_num_instances != -1:
             self.instance_dirs = self.instance_dirs[:max_num_instances]
 
+        in_fn = '/media/data1/apsk14/srn_seg_data/Table/Table-level-1.txt'
+        with open(in_fn, 'r') as fin:
+            part_name2id = {d.split()[1]: (cnt + 1) for cnt, d in enumerate(fin.readlines())}
+        in_fn = '/media/data1/apsk14/srn_seg_data/Table/Table.txt'
+        with open(in_fn, 'r') as fin:
+            part_old2new = {d.rstrip().split()[0]: d.rstrip().split()[1] for d in fin.readlines()}
+
         self.all_instances = [SceneInstanceDataset(instance_idx=idx,
                                                    instance_dir=dir,
                                                    load_to_ram=preload,
                                                    specific_observation_idcs=specific_observation_idcs,
                                                    img_sidelength=img_sidelength,
-                                                   num_images=max_observations_per_instance)
+                                                   num_images=max_observations_per_instance,
+                                                   part_name2id=part_name2id,
+                                                   part_old2new=part_old2new)
                               for idx, dir in enumerate(self.instance_dirs)]
 
         self.num_per_instance_observations = [len(obj) for obj in self.all_instances]
@@ -222,5 +265,6 @@ class SceneClassDataset():
         for i in range(self.samples_per_instance - 1):
             observations.append(self.all_instances[obj_idx][np.random.randint(len(self.all_instances[obj_idx]))])
 
-        return observations, ([ray_bundle.rgb for ray_bundle in observations],
+        return observations, ([ray_bundle.rgb for ray_bundle in observations], [ray_bundle.seg for ray_bundle in observations],
                              [ray_bundle.depth for ray_bundle in observations])
+

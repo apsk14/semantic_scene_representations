@@ -15,7 +15,8 @@ torch.backends.cudnn.benchmark = True
 # params
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--train_test', type=str, required=True, help='path to file list of h5 train data')
+parser.add_argument('--train_test', type=str, required=True, help='whether to train or evaluate a model')
+parser.add_argument('--latent_only', type=str, required=False, help='whether to only optimize the latent codes')
 parser.add_argument('--data_root', required=True, help='path to file list of h5 train data')
 parser.add_argument('--val_root', required=False, help='path to file list of h5 train data')
 parser.add_argument('--logging_root', type=str, default='/media/staging/deep_sfm/',
@@ -104,7 +105,6 @@ def train(model,
                                     shuffle=False,
                                     drop_last=True,
                                     collate_fn=collate_fn)
-
     model.train()
     model.cuda()
 
@@ -118,7 +118,7 @@ def train(model,
 
     optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
 
-    if opt.checkpoint is not None:
+    if checkpoint is not None:
         print("Loading model from %s"%opt.checkpoint)
         util.custom_load(model, path=opt.checkpoint,
                          discriminator=None,
@@ -127,6 +127,7 @@ def train(model,
 
     writer = SummaryWriter(run_dir)
     iter = opt.start_step
+    print(len(dataloader))
     start_epoch = iter // len(dataloader)
     step = 0
 
@@ -141,15 +142,24 @@ def train(model,
 
                 optimizer.zero_grad()
 
+                #losses
                 dist_loss = model.get_image_loss(model_outputs, ground_truth)
+                class_loss = model.get_seg_loss(model_outputs, ground_truth)
+                img_IOU_loss =  model.get_img_IOU_loss(model_outputs, ground_truth)
+                pc_loss = model.get_pc_loss(model_outputs, model_input)
+                IOU_loss = model.get_IOU_loss(model_outputs, model_input)
                 reg_loss = model.get_regularization_loss(model_outputs, ground_truth)
                 var_loss = model.get_latent_loss()
-
                 weighted_kl_loss = var_loss * opt.kl_weight
 
-                gen_loss_total = opt.l1_weight * dist_loss + \
-                                 opt.reg_weight * reg_loss + \
-                                 weighted_kl_loss
+                if opt.overwrite_embeddings:
+                    gen_loss_total = opt.l1_weight * dist_loss + \
+                                     opt.reg_weight * reg_loss + \
+                                     weighted_kl_loss
+                else:
+                    gen_loss_total = opt.l1_weight * (dist_loss + class_loss + img_IOU_loss/2) +\
+                                     opt.reg_weight * reg_loss + \
+                                     weighted_kl_loss
 
                 gen_loss_total.backward(retain_graph=False)
 
@@ -159,11 +169,16 @@ def train(model,
 
                 optimizer.step()
 
-                print("Iter %07d   Epoch %03d   dist_loss %0.4f   KL %0.4f   reg_loss %0.4f" %
-                      (iter, epoch, dist_loss*opt.l1_weight, weighted_kl_loss, reg_loss*opt.reg_weight))
 
-                model.write_updates(writer, model_outputs, ground_truth, iter)
+                print("Iter %07d   Epoch %03d   dist_loss %0.4f  class_loss %0.4f  img_IOU_loss %0.4f  pc_loss %0.4f  IOU_loss %0.4f  KL %0.4f   reg_loss %0.4f" %
+                (iter, epoch, dist_loss*opt.l1_weight, class_loss*opt.l1_weight, img_IOU_loss*opt.l1_weight/2, pc_loss*opt.l1_weight, IOU_loss*opt.l1_weight, weighted_kl_loss, reg_loss*opt.reg_weight))
+
+                with torch.no_grad():
+                    model.write_updates(writer, model_input, model_outputs, ground_truth, iter)
                 writer.add_scalar("scaled_distortion_loss", dist_loss*opt.l1_weight, iter)
+                writer.add_scalar("scaled_class_loss", class_loss * opt.l1_weight, iter)
+                writer.add_scalar("scaled_pc_loss", pc_loss * (opt.l1_weight), iter)
+                writer.add_scalar("scaled_IOU_loss", IOU_loss * (opt.l1_weight), iter)
                 writer.add_scalar("combined_generator_loss", torch.clamp(gen_loss_total, 0, 1e3), iter)
                 writer.add_scalar("scaled_reg_loss", reg_loss * opt.reg_weight, iter)
                 writer.add_scalar("reg_loss", reg_loss)
@@ -203,7 +218,7 @@ def train(model,
                             ssims.append(ssim)
                             dist_losses.append(dist_loss)
 
-                            model.write_updates(writer, model_outputs, ground_truth, iter, prefix='val_')
+                            model.write_updates(writer, model_input, model_outputs, ground_truth, iter, prefix='val_')
 
                         writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
                         writer.add_scalar("val_psnr", np.mean(psnrs), iter)
@@ -272,55 +287,112 @@ def test(model, dataset):
         out_file.write('\n'.join(["%s: %s" % (key, value) for key, value in vars(opt).items()]))
 
     print('Beginning evaluation...')
-    save_out_first_n = 250
+    save_out_first_n = 200000  # 250
     with torch.no_grad():
         obj_idx = 0
         idx = 0
-        psnrs, ssims = list(), list()
+        IOU = 0
+        part_intersect = np.zeros(5, dtype=np.float32)
+        part_union = np.zeros(5, dtype=np.float32)
+        # psnrs, ssims = list(), list()
+        confusion = np.zeros((5, 3), dtype=int) # TODO: find a way to generalize this
+        ins_idx = 0
         for model_input, ground_truth in dataset:
+
             model_outputs = model(model_input)
-            psnr, ssim = model.get_psnr(model_outputs, ground_truth)
+            # psnr, ssim = model.get_psnr(model_outputs, ground_truth)
 
-            psnrs.extend(psnr)
-            ssims.extend(ssim)
+            # psnrs.extend(psnr)
+            # ssims.extend(ssim)
 
-            print(np.mean(psnrs), np.mean(ssims))
+            # print(np.mean(psnrs), np.mean(ssims))
 
-            obj_idcs = RayBundle(*model_input).obj_idx
-            print(obj_idcs[-1])
+            observation = Observation(*model_input)
+            obj_idcs = observation.instance_idx.long()
+
+            #print(obj_idcs[-1])
+
+            #print(idx)
+            #print(obj_idcs[-1])
+
 
             if obj_idx < save_out_first_n:
                 output_imgs = model.get_output_img(model_outputs).cpu().numpy()
-                comparisons = model.get_comparisons(model_input,
-                                                    model_outputs,
-                                                    ground_truth)
-                for i in range(len(output_imgs)):
+                #trgt_imgs, trgt_segs, trgt_depths = ground_truth
+                #print(trgt_segs.shape)
+                # output_segs = model.get_output_seg(model_outputs)
+                # comparisons = model.get_comparisons(model_input,
+                #                                      model_outputs,
+                #                                      ground_truth)
+                # output_segs = output_segs.astype(np.float32)
+            #     # print(type(output_imgs[0,0,0,0]))
+            #     # print(type(output_segs[0,0,0,0]))
+            #     # print(np.max(output_imgs))
+            #     # print(np.max(output_segs))
+            #print(len(output_imgs))
+
+                for i in range(len(output_imgs)): #len(output_imgs)
                     prev_obj_idx = obj_idx
                     obj_idx = obj_idcs[i]
 
                     if prev_obj_idx != obj_idx:
                         idx = 0
 
-                    img_only_path = os.path.join(traj_dir, "%06d"%obj_idx)
-                    comp_path = os.path.join(comparison_dir, "%06d"%obj_idx)
+                    if idx == 0:
+                        print(ins_idx)
+                        print('calculating IOU')
+                        #print(confusion)
+                        pts_path = os.path.join(traj_dir, 'point_clouds', "%06d" % obj_idx)
+                        util.cond_mkdir(pts_path)
+                        pc_path = os.path.join(pts_path, 'pc.txt')
+                        real_pc_path = os.path.join(pts_path, 'realpc.txt')
+                        model.get_output_pc(model_outputs, model_input, pc_path, real_pc_path)
+                        newIOU = model.get_IOU_vals(model_outputs, model_input, confusion, part_intersect, part_union)
+                        print(newIOU)
+                        IOU += newIOU
+                        ins_idx += 1
 
-                    util.cond_mkdir(img_only_path)
-                    util.cond_mkdir(comp_path)
 
-                    pred = util.convert_image(output_imgs[i].squeeze())
-                    comp = util.convert_image(comparisons[i].squeeze())
-
-                    util.write_img(pred, os.path.join(img_only_path, "%06d.png"%idx))
-                    util.write_img(comp, os.path.join(comp_path, "%06d.png"%idx))
-
+                    # img_only_path = os.path.join(traj_dir, 'images', "%06d"%obj_idx)
+                    # seg_only_path = os.path.join(traj_dir, 'segs', "%06d"%obj_idx)
+                    # comp_path = os.path.join(comparison_dir, "%06d"%obj_idx)
+                    #
+                    # util.cond_mkdir(img_only_path)
+                    # util.cond_mkdir(seg_only_path)
+                    # util.cond_mkdir(comp_path)
+                    # #util.cond_mkdir(pts_path)
+                    #
+                    #
+                    # pred = util.convert_image(output_imgs[i].squeeze())
+                    # pred_seg = util.convert_image(output_segs[i].squeeze())
+                    # comp = util.convert_image(comparisons[i].squeeze())
+                    #
+                    # util.write_img(pred, os.path.join(img_only_path, "%06d.png"%idx))
+                    # util.write_img(pred_seg, os.path.join(seg_only_path, "%06d.png" % idx))
+                    # util.write_img(comp, os.path.join(comp_path, "%06d.png"%idx))
+            #
                     idx += 1
+                else:
+                    continue
+                break
 
-    with open(os.path.join(traj_dir, "results.txt"), "w") as out_file:
-        out_file.write("%0.6f, %0.6f" % (np.mean(psnrs), np.mean(ssims)))
+    # with open(os.path.join(traj_dir, "results.txt"), "w") as out_file:
+    #     out_file.write("%0.6f, %0.6f" % (np.mean(psnrs), np.mean(ssims)))
 
+    #mIOU_diff = model.calc_mIOU(confusion)
+    mIOU = IOU/ins_idx
 
-    print(np.mean(psnrs))
-    print(np.mean(ssims))
+    print('mIOU: ', mIOU)
+    part_intersect = np.delete(part_intersect, np.where(part_union == 0))
+    part_union = np.delete(part_union, np.where(part_union == 0))
+
+    part_iou = np.divide(part_intersect[0:], part_union[0:])
+    mean_part_iou = np.mean(part_iou)
+    print('Category mean IoU: %f, %s' % (mean_part_iou, str(part_iou)))
+
+    #print('mIOU_diff: ', mIOU_diff)
+    # print(np.mean(psnrs))
+    # print(np.mean(ssims))
 
 
 def main():
