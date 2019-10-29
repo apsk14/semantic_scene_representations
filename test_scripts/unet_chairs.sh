@@ -34,12 +34,12 @@ export CUDA_VISIBLE_DEVICES=5
 #		      --no_preloading \
 #		      --no_validation
 
-python ../run_srns.py --train_test test \
+python ../run_srn_unet.py --train_test test \
                       --data_root /home/apsk14/data/final_data/Chair/Chair.val/ \
                       --logging_root /home/sitzmann/data/deep_space/logging/runs_amit/ \
                       --batch_size 1 \
                       --max_epoch 1 \
-                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/latent/logs/10_18/15-57-20_/epoch_0018_iter_035000.pth \
+                      --unet_path /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/unet/logs/10_22/23-58-52_/epoch_0042_iter_075000.pth \
 		      --no_preloading \
 		      --no_validation
 

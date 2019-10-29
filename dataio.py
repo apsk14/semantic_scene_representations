@@ -52,7 +52,10 @@ class SceneInstanceDataset():
 
         object_name = instance_dir.split('/')[-4]
         object_dir = instance_dir.split('/')[-3]
+        if object_dir == 'Table.train_val':
+            object_dir = 'Table.train'
         og_dir = '/media/data1/apsk14/srn_seg_data/' + object_name + '/' + object_dir
+
 
         color_dir = os.path.join(instance_dir, 'rgb')
         seg_dir = os.path.join(instance_dir, 'seg')
@@ -155,6 +158,8 @@ class SceneInstanceDataset():
         uv = uv.reshape(2,-1).transpose(1,0)
         rgbs = self.rgbs[idx].reshape(3, -1).transpose(1, 0)
         segs = self.segs[idx].reshape(1, -1).transpose(1, 0)
+        # rgbs = self.rgbs[idx]
+        # segs = self.segs[idx]
         depths = depth.reshape(-1, 1)
 
         return Observation(instance_idx=torch.Tensor([self.instance_idx]).squeeze(),
@@ -185,6 +190,7 @@ class SceneClassDataset():
 
 
         print(root_dir)
+        obj_name = root_dir.split('/')[-3]
         self.instance_dirs = sorted(glob(os.path.join(root_dir, '*/')))
         print('\n'.join(self.instance_dirs))
 
@@ -193,10 +199,10 @@ class SceneClassDataset():
         if max_num_instances != -1:
             self.instance_dirs = self.instance_dirs[:max_num_instances]
 
-        in_fn = '/media/data1/apsk14/srn_seg_data/Table/Table-level-1.txt'
+        in_fn = '/media/data1/apsk14/srn_seg_data/' + obj_name + '/' + obj_name + '-level-1.txt'
         with open(in_fn, 'r') as fin:
             part_name2id = {d.split()[1]: (cnt + 1) for cnt, d in enumerate(fin.readlines())}
-        in_fn = '/media/data1/apsk14/srn_seg_data/Table/Table.txt'
+        in_fn = '/media/data1/apsk14/srn_seg_data/' + obj_name + '/' + obj_name + '.txt'
         with open(in_fn, 'r') as fin:
             part_old2new = {d.rstrip().split()[0]: d.rstrip().split()[1] for d in fin.readlines()}
 

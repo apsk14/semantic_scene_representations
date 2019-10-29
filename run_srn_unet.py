@@ -7,10 +7,8 @@ from tensorboardX import SummaryWriter
 
 from dataio import *
 from torch.utils.data import DataLoader
-from srns import *
+from srn_unet import *
 import util
-
-NUM_CLASSES = 6
 
 torch.backends.cudnn.benchmark = True
 
@@ -74,6 +72,10 @@ parser.add_argument('--overwrite_embeddings', action='store_true', default=False
                     help='When loading from checkpoint: Whether to discard checkpoint embeddings and initialize at random.')
 parser.add_argument('--start_step', type=int, default=0,
                     help='If continuing from checkpoint, which iteration to start counting at.')
+parser.add_argument('--srn_path', type=str, default=None,
+                    help='SRN Model for testing single shot Unet')
+parser.add_argument('--unet_path', type=str, default=None,
+                    help='Unet Model for testing Unet')
 
 parser.add_argument('--use_unet_renderer', action='store_true',
                     help='Whether to use a DeepVoxels-style unet as rendering network or a per-pixel 1x1 convnet')
@@ -85,6 +87,7 @@ opt = parser.parse_args()
 print('\n'.join(["%s: %s" % (key, value) for key, value in vars(opt).items()]))
 
 device = torch.device('cuda')
+NUM_CLASSES = 6
 
 
 def train(model,
@@ -140,31 +143,18 @@ def train(model,
         print('Beginning training...')
         for epoch in range(start_epoch, opt.max_epoch):
             for model_input, ground_truth in dataloader:
-                model_outputs = model(model_input)
+                observation = Observation(*model_input)
+                rgb_img = observation.rgb
+                model_outputs = model(rgb_img.cuda())
 
                 optimizer.zero_grad()
 
                 #losses
-                dist_loss = model.get_image_loss(model_outputs, ground_truth)
                 class_loss = model.get_seg_loss(model_outputs, ground_truth)
-                img_IOU_loss =  model.get_img_IOU_loss(model_outputs, ground_truth)
-                pc_loss = model.get_pc_loss(model_outputs, model_input)
-                IOU_loss = model.get_IOU_loss(model_outputs, model_input)
-                reg_loss = model.get_regularization_loss(model_outputs, ground_truth)
-                var_loss = model.get_latent_loss()
-                weighted_kl_loss = var_loss * opt.kl_weight
+                img_IOU_loss = model.get_img_IOU_loss(model_outputs, ground_truth)
 
-                if opt.overwrite_embeddings:
-                    gen_loss_total = opt.l1_weight * dist_loss + \
-                                     opt.reg_weight * reg_loss + \
-                                     weighted_kl_loss
-                else:
-                    # gen_loss_total = opt.l1_weight * (dist_loss + class_loss + img_IOU_loss/2) +\
-                    #                  opt.reg_weight * reg_loss + \
-                    #                  weighted_kl_loss
-                    gen_loss_total = opt.l1_weight * (dist_loss) +\
-                                     opt.reg_weight * reg_loss + \
-                                     weighted_kl_loss
+                gen_loss_total = opt.l1_weight * (class_loss + img_IOU_loss/2)
+
 
                 gen_loss_total.backward(retain_graph=False)
 
@@ -175,21 +165,14 @@ def train(model,
                 optimizer.step()
 
 
-                print("Iter %07d   Epoch %03d   dist_loss %0.4f  class_loss %0.4f  img_IOU_loss %0.4f  pc_loss %0.4f  IOU_loss %0.4f  KL %0.4f   reg_loss %0.4f" %
-                (iter, epoch, dist_loss*opt.l1_weight, class_loss*opt.l1_weight, img_IOU_loss*opt.l1_weight/2, pc_loss*opt.l1_weight, IOU_loss*opt.l1_weight, weighted_kl_loss, reg_loss*opt.reg_weight))
+                print("Iter %07d   Epoch %03d  class_loss %0.4f  img_IOU_loss %0.4f " %
+                (iter, epoch,class_loss*opt.l1_weight, img_IOU_loss*opt.l1_weight/2))
 
                 with torch.no_grad():
                     model.write_updates(writer, model_input, model_outputs, ground_truth, iter)
-                writer.add_scalar("scaled_distortion_loss", dist_loss*opt.l1_weight, iter)
                 writer.add_scalar("scaled_class_loss", class_loss * opt.l1_weight, iter)
-                writer.add_scalar("scaled_pc_loss", pc_loss * (opt.l1_weight), iter)
-                writer.add_scalar("scaled_IOU_loss", IOU_loss * (opt.l1_weight), iter)
+                writer.add_scalar("scaled_IOU_loss", img_IOU_loss * opt.l1_weight/2, iter)
                 writer.add_scalar("combined_generator_loss", torch.clamp(gen_loss_total, 0, 1e3), iter)
-                writer.add_scalar("scaled_reg_loss", reg_loss * opt.reg_weight, iter)
-                writer.add_scalar("reg_loss", reg_loss)
-                writer.add_scalar("scaled_kl_loss", weighted_kl_loss, iter)
-                writer.add_scalar("kl_loss", var_loss, iter)
-                writer.add_scalar("kl_weight", opt.kl_weight, iter)
 
                 if not iter:
                     # Save parameters used into the log directory.
@@ -211,23 +194,25 @@ def train(model,
 
                     model.eval()
                     with torch.no_grad():
-                        psnrs = []
-                        ssims = []
-                        dist_losses = []
-                        for model_input, ground_truth in val_dataloader:
-                            model_outputs = model(model_input)
 
-                            dist_loss = model.get_image_loss(model_outputs, ground_truth).cpu().numpy()
-                            psnr, ssim = model.get_psnr(model_outputs, ground_truth)
-                            psnrs.append(psnr)
-                            ssims.append(ssim)
-                            dist_losses.append(dist_loss)
+                        seg_losses = []
+                        iou_losses = []
+                        for model_input, ground_truth in val_dataloader:
+                            observation = Observation(*model_input)
+                            rgb_img = observation.rgb
+                            model_outputs = model(rgb_img.cuda())
+                            seg_loss = model.get_seg_loss(model_outputs, ground_truth).cpu().numpy()
+                            iou_loss = model.get_img_IOU_loss(model_outputs, ground_truth).cpu().numpy()
+
+                            seg_losses.append(seg_loss)
+                            iou_losses.append(iou_loss)
 
                             model.write_updates(writer, model_input, model_outputs, ground_truth, iter, prefix='val_')
 
-                        writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
-                        writer.add_scalar("val_psnr", np.mean(psnrs), iter)
-                        writer.add_scalar("val_ssim", np.mean(ssims), iter)
+                        writer.add_scalar("val_seg_loss", np.mean(seg_losses), iter)
+                        writer.add_scalar("val_iou_loss", np.mean(iou_losses), iter)
+
+
                     model.train()
 
                 iter += 1
@@ -256,37 +241,34 @@ def train(model,
     return final_ckpt_path
 
 
-def test(model, dataset):
+def test(dataset, srn_path, unet_path):
+    # colors = [(random.uniform(0.0, 1.0), random.uniform(0.0, 1.0), random.uniform(0.0, 1.0)) for i in
+    #                range(NUM_CLASSES)]
+    # colors[0] = (1, 1, 1)
+    # colors = np.array(colors)
+    colors = np.array([[1., 1., 1.], [0.42415977, 0.95022593, 0.88655337], [0.34309762, 0.95100353, 0.3231704],
+                                [0.48631192, 0.82279855, 0.80800228], [0.27445405, 0.42794667, 0.42610895],
+                                [0.53534125, 0.04302588, 0.9653457]])
     collate_fn = dataset.collate_fn
+    num_instances = dataset.num_instances
     dataset = DataLoader(dataset,
                          collate_fn=collate_fn,
                          batch_size=1,
                          shuffle=False,
                          drop_last=False)
 
-    if opt.checkpoint is not None:
-        print("Loading model from %s"%opt.checkpoint)
-        util.custom_load(model, path=opt.checkpoint,
-                         discriminator=None,
-                         overwrite_embeddings=opt.overwrite_embeddings)
-    else:
-        print("Have to give checkpoint!")
-        return
-
-    model.eval()
-    model.cuda()
 
     # directory structure: month_day/
     dir_name = os.path.join(datetime.datetime.now().strftime('%m_%d'),
                             datetime.datetime.now().strftime('%H-%M-%S_') +
-                            '_'.join(opt.checkpoint.strip('/').split('/')[-2:])[:200] + '_'
+                            '_'.join(opt.unet_path.strip('/').split('/')[-2:])[:200] + '_'
                             + opt.data_root.strip('/').split('/')[-1])
 
     #traj_dir = os.path.join(opt.logging_root, 'test_traj', dir_name)
     #comparison_dir = os.path.join(opt.logging_root, 'test_traj', dir_name, 'comparison')
-    traj_dir = os.path.join('/home/apsk14/data/', 'test_traj_chair_multi', dir_name)
-    comparison_dir = os.path.join(traj_dir, 'comparison')
-    util.cond_mkdir(comparison_dir)
+    traj_dir = os.path.join('/home/apsk14/data/', 'test_traj_chair_unet_multi', dir_name)
+    #comparison_dir = os.path.join(traj_dir, 'comparison')
+    # util.cond_mkdir(comparison_dir)
     util.cond_mkdir(traj_dir)
 
     # Save parameters used into the log directory.
@@ -304,26 +286,49 @@ def test(model, dataset):
         confusion = np.zeros((NUM_CLASSES, 3), dtype=int) # TODO: find a way to generalize this
         ins_idx = 0
         output_flag = 1
+        model_unet = UnetModel(num_instances=num_instances,
+                          latent_dim=opt.embedding_size,
+                          has_params=opt.has_params,
+                          fit_single_srn=opt.fit_single_srn,
+                          use_unet_renderer=opt.use_unet_renderer,
+                          tracing_steps=opt.tracing_steps)
+        util.custom_load(model_unet, path=unet_path)
+        model_unet.eval()
+        model_unet.cuda()
+        if srn_path is not None:
+            model_srn = SRNsModel(num_instances=num_instances,
+                              latent_dim=opt.embedding_size,
+                              has_params=opt.has_params,
+                              fit_single_srn=opt.fit_single_srn,
+                              use_unet_renderer=opt.use_unet_renderer,
+                              tracing_steps=opt.tracing_steps)
+            util.custom_load(model_srn, path=srn_path)
+            model_srn.eval()
+            model_srn.cuda()
         for model_input, ground_truth in dataset:
-
-            model_outputs = model(model_input)
             observation = Observation(*model_input)
             obj_idcs = observation.instance_idx.long()
-
 
             if obj_idx >= save_out_first_n:
                 output_flag = 0
 
-            output_imgs = model.get_output_img(model_outputs).cpu().numpy()
-            output_segs = model.get_output_seg(model_outputs)
-            output_segs = output_segs.astype(np.float32)
-            trgt_imgs, trgt_segs, trgt_depths = ground_truth
-            trgt_imgs = util.lin2img(trgt_imgs)
-            trgt_segs_disp = model.get_output_seg(trgt_segs, trgt=True)
-            comparisons = model.get_comparisons(model_input,
-                                                 model_outputs,
-                                                 ground_truth)
-            for i in range(len(output_imgs)):
+            if srn_path is not None:
+                model_output = model_srn(model_input)
+                rgb_image = model_srn.get_output_img(model_output)
+                #rgb_image = eval_srn(model_input, srn_path, num_instances)
+            else:
+                rgb_image = observation.rgb.cuda()
+
+            trgt_imgs, trgt_segs_tensor, trgt_depths = ground_truth
+            prediction = model_unet(rgb_image)
+            output_segs = model_unet.get_output_seg(prediction, colors)
+            trgt_segs = model_unet.get_output_seg(trgt_segs_tensor, colors)
+
+            #prediction, output_segs, trgt_segs = eval_unet(rgb_image, trgt_segs_tensor, unet_path, num_instances, colors)
+            #comparisons = model.get_comparisons(model_input,
+                                                 # prediction,
+                                                 # ground_truth)
+            for i in range(len(rgb_image)):
                 prev_obj_idx = obj_idx
                 obj_idx = obj_idcs[i]
 
@@ -336,44 +341,122 @@ def test(model, dataset):
                     print(confusion)
                     ins_idx += 1
                 print('OBS', idx)
-                newIOU = model.get_IOU_vals(model_outputs, trgt_segs, confusion, part_intersect, part_union)
+                newIOU = get_IOU_vals(prediction, trgt_segs_tensor, confusion, part_intersect, part_union)
                 print(newIOU)
                 IOU += newIOU
 
                 if output_flag:
                     img_only_path = os.path.join(traj_dir, 'images', "%06d" % obj_idx)
-                    gt_only_path = os.path.join(traj_dir, 'gt_rgb', "%06d" % obj_idx)
+                    gt_only_path = os.path.join(traj_dir, 'gt', "%06d" % obj_idx)
                     seg_only_path = os.path.join(traj_dir, 'segs', "%06d" % obj_idx)
-                    seg_gt_path = os.path.join(traj_dir, 'gt_seg', "%06d" % obj_idx)
-                    comp_path = os.path.join(comparison_dir, "%06d" % obj_idx)
+                    #comp_path = os.path.join(comparison_dir, "%06d" % obj_idx)
 
                     util.cond_mkdir(img_only_path)
                     util.cond_mkdir(gt_only_path)
                     util.cond_mkdir(seg_only_path)
-                    util.cond_mkdir(seg_gt_path)
-                    util.cond_mkdir(comp_path)
+                    #util.cond_mkdir(comp_path)
 
-                    pred = util.convert_image(output_imgs[i].squeeze())
-                    gt_rgb = util.convert_image(trgt_imgs[i].squeeze())
-                    gt_seg = util.convert_image(trgt_segs_disp[i].squeeze())
+
+                    pred = util.convert_image(rgb_image[i].squeeze())
+                    gt = util.convert_image(trgt_segs[i].squeeze())
                     pred_seg = util.convert_image(output_segs[i].squeeze())
-                    comp = util.convert_image(comparisons[i].squeeze())
+                    #comp = util.convert_image(comparisons[i].squeeze())
+
 
                     util.write_img(pred, os.path.join(img_only_path, "%06d.png" % idx))
-                    util.write_img(gt_rgb, os.path.join(gt_only_path, "%06d.png" % idx))
-                    util.write_img(gt_seg, os.path.join(seg_gt_path, "%06d.png" % idx))
+                    util.write_img(gt, os.path.join(gt_only_path, "%06d.png" % idx))
                     util.write_img(pred_seg, os.path.join(seg_only_path, "%06d.png" % idx))
-                    util.write_img(comp, os.path.join(comp_path, "%06d.png" % idx))
+                    #util.write_img(comp, os.path.join(comp_path, "%06d.png" % idx))
                 idx += 1
 
     mIOU = IOU/(ins_idx * 251)
 
+    print(colors)
     print('mIOU: ', mIOU)
     part_intersect = np.delete(part_intersect, np.where(part_union == 0))
     part_union = np.delete(part_union, np.where(part_union == 0))
     part_iou = np.divide(part_intersect[0:], part_union[0:])
     mean_part_iou = np.mean(part_iou)
     print('Category mean IoU: %f, %s' % (mean_part_iou, str(part_iou)))
+
+
+def eval_srn(model_input, path, num_instances):
+    model = SRNsModel(num_instances=num_instances,
+                      latent_dim=opt.embedding_size,
+                      has_params=opt.has_params,
+                      fit_single_srn=opt.fit_single_srn,
+                      use_unet_renderer=opt.use_unet_renderer,
+                      tracing_steps=opt.tracing_steps)
+    util.custom_load(model, path=path)
+    model.eval()
+    model.cuda()
+    model_output = model(model_input)
+    rgb_img = model.get_output_img(model_output)
+    return rgb_img
+
+
+def eval_unet(model_input, trgt_segs, path, num_instances,colors):
+    model = UnetModel(num_instances=num_instances,
+                      latent_dim=opt.embedding_size,
+                      has_params=opt.has_params,
+                      fit_single_srn=opt.fit_single_srn,
+                      use_unet_renderer=opt.use_unet_renderer,
+                      tracing_steps=opt.tracing_steps)
+    util.custom_load(model, path=path)
+    model.eval()
+    model.cuda()
+    prediction = model(model_input)
+    seg_preds = model.get_output_seg(prediction,colors)
+    trgt_segs = model.get_output_seg(trgt_segs, colors)
+    return prediction, seg_preds, trgt_segs
+
+def get_IOU_vals(prediction, trgt_seg, confusion, part_intersect, part_union): # had arg confusion
+    # confusion vector is [true pos, false pos, false neg]
+
+    trgt_seg = torch.reshape(trgt_seg, (1,1,trgt_seg.shape[2]*trgt_seg.shape[2]))
+    prediction = torch.reshape(prediction, (1, prediction.shape[1], prediction.shape[2] * prediction.shape[2]))
+    trgt_seg = trgt_seg.permute(0,2,1)
+    prediction = prediction.permute(0,2,1)
+    pred_segs, seg_idx = torch.max(prediction, dim=2)
+    pred_labels = seg_idx.cpu().numpy().squeeze()
+    real_label = trgt_seg.cpu().numpy().squeeze()
+
+    # pred_labels = np.delete(seg_idx, np.where(trgt_seg == 0), axis=0)
+    # real_label = np.delete(trgt_seg, np.where(trgt_seg == 0), axis=0)
+
+    num_classes = NUM_CLASSES
+    cur_shape_iou_tot = 0.0
+    cur_shape_iou_cnt = 0
+    for cur_class in range(0, num_classes):
+
+        cur_gt_mask = (real_label == cur_class)
+        cur_pred_mask = (pred_labels == cur_class)
+
+        has_gt = (np.sum(cur_gt_mask) > 0)
+        has_pred = (np.sum(cur_pred_mask) > 0)
+
+        if has_gt or has_pred:
+            intersect = np.sum(cur_gt_mask & cur_pred_mask)
+            union = np.sum(cur_gt_mask | cur_pred_mask)
+            iou = intersect / union
+
+            cur_shape_iou_tot += iou
+            cur_shape_iou_cnt += 1
+
+            part_intersect[cur_class - 1] += intersect
+            part_union[cur_class - 1] += union
+
+        # expected_true = pred_labels[np.where(real_label == cur_class)]
+        # expected_false = pred_labels[np.where(real_label != cur_class)]
+        # true_pos[cur_class-1] = expected_true[np.where(expected_true == cur_class)].shape[0]
+        # false_neg[cur_class-1] = expected_true[np.where(expected_true != cur_class)].shape[0]
+        # false_pos[cur_class-1] = expected_false[np.where(expected_false == cur_class)].shape[0]
+    # IOU = self.calc_mIOU(np.concatenate((true_pos, false_pos, false_neg), axis=1))
+    # confusion += np.concatenate((true_pos, false_pos, false_neg), axis=1)
+    if cur_shape_iou_cnt == 0:
+        return 1
+    return cur_shape_iou_tot / cur_shape_iou_cnt
+
 
 
 def main():
@@ -403,7 +486,7 @@ def main():
         else:
             val_dataset = None
 
-        model = SRNsModel(num_instances=dataset.num_instances,
+        model = UnetModel(num_instances=dataset.num_instances,
                           latent_dim=opt.embedding_size,
                           has_params=opt.has_params,
                           fit_single_srn=opt.fit_single_srn,
@@ -423,13 +506,13 @@ def main():
                                     max_observations_per_instance=-1,
                                     samples_per_instance=1,
                                     img_sidelength=opt.img_sidelength)
-        model = SRNsModel(num_instances=dataset.num_instances,
-                          latent_dim=opt.embedding_size,
-                          has_params=opt.has_params,
-                          fit_single_srn=opt.fit_single_srn,
-                          use_unet_renderer=opt.use_unet_renderer,
-                          tracing_steps=opt.tracing_steps)
-        test(model, dataset)
+        # model = SRNsModel(num_instances=dataset.num_instances,
+        #                   latent_dim=opt.embedding_size,
+        #                   has_params=opt.has_params,
+        #                   fit_single_srn=opt.fit_single_srn,
+        #                   use_unet_renderer=opt.use_unet_renderer,
+        #                   tracing_steps=opt.tracing_steps)
+        test(dataset, opt.srn_path, opt.unet_path)
     else:
         print("Unknown mode.")
         return None

@@ -1,31 +1,29 @@
 #!/usr/bin/env bash
 
-export CUDA_VISIBLE_DEVICES=8
+export CUDA_VISIBLE_DEVICES=5
 #/home/apsk14/data/final_data/Chair/Chair.val/
 #--img_sidelength 128 \
-#specific_observation_idcs 102 \
-#
 
 #Train
-#python ../run_srns.py --train_test train \
-#                      --data_root /home/apsk14/data/final_data/Table/Table.train/ \
-#                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Table/train_vanilla \
-#                      --batch_size 16 \
-#                      --max_epoch 20 \
-#              --no_preloading \
-#		      --no_validation
+python ../run_srn_unet.py --train_test train \
+                      --data_root /home/apsk14/data/final_data/Table/Table.train/ \
+                      --val_root /home/apsk14/data/final_data/Table/Table.train_val/ \
+                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Table/unet \
+                      --batch_size 128 \
+                      --max_epoch 500 \
+              --no_preloading \
 
 ##Optimize Latent
-python ../run_srns.py --train_test train \
-                      --data_root /home/apsk14/data/final_data/Chair/Chair.val/ \
-                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/latent_vanilla_single \
-                      --batch_size 16 \
-                      --max_epoch 5000 \
-                      --specific_observation_idcs 102 \
-                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chair/train_vanilla/logs/10_16/03-14-47_/epoch_0012_iter_170000.pth \
-                      --overwrite_embeddings \
-		      --no_preloading \
-		      --no_validation
+#python ../run_srns.py --train_test train \
+#                      --data_root /home/apsk14/data/final_data/Chair/Chair.val/ \
+#                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/latent_single \
+#                      --batch_size 16 \
+#                      --max_epoch 60 \
+#                      --specific_observation_idcs 102 \
+#                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/train/logs/10_13/11-22-09_/epoch_0008_iter_125000.pth \
+#                      --overwrite_embeddings \
+#		      --no_preloading \
+#		      --no_validation
 
 
 

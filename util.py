@@ -13,6 +13,7 @@ def convert_image(img):
     if not isinstance(img, np.ndarray):
         img = np.array(img.cpu().detach().numpy())
 
+    img = img.astype(np.float32)
     img = img.squeeze()
     img = img.transpose(1,2,0)
     img += 1.
@@ -127,11 +128,12 @@ def custom_load(model, path, discriminator=None, overwrite_embeddings=False, ove
     state.update(whole_dict['model'])
     model.load_state_dict(state)
 
-    for name, param in model.named_parameters():
-        if name == 'latent_codes.weight':
-            param.requires_grad = True
-        else:
-            param.requires_grad = False
+    if overwrite_embeddings:
+        for name, param in model.named_parameters():
+            if name == 'latent_codes.weight':
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
 
 def compare_models(model, path1, path2):
     if os.path.isdir(path1):
@@ -211,6 +213,7 @@ def show_images(images, titles=None):
     n_images = len(images)
     if titles is None: titles = ['Image (%d)' % i for i in range(1, n_images + 1)]
     fig = plt.figure()
+    #fig + 5 #BULLSHIT CODE
     for n, (image, title) in enumerate(zip(images, titles)):
         a = fig.add_subplot(np.ceil(n_images / float(cols)), cols, n + 1)
         im = a.imshow(image)
