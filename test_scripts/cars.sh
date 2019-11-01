@@ -39,7 +39,7 @@ python ../run_srns.py --train_test test \
                       --logging_root /home/sitzmann/data/deep_space/logging/runs_amit/ \
                       --batch_size 1 \
                       --max_epoch 1 \
-                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/latent/logs/10_18/15-57-20_/epoch_0018_iter_035000.pth \
+                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/latent_single/logs/10_20/12-32-44_/epoch_1973_iter_075000.pth \
 		      --no_preloading \
 		      --no_validation
 

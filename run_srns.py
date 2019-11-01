@@ -159,12 +159,12 @@ def train(model,
                                      opt.reg_weight * reg_loss + \
                                      weighted_kl_loss
                 else:
-                    # gen_loss_total = opt.l1_weight * (dist_loss + class_loss + img_IOU_loss/2) +\
-                    #                  opt.reg_weight * reg_loss + \
-                    #                  weighted_kl_loss
-                    gen_loss_total = opt.l1_weight * (dist_loss) +\
+                    gen_loss_total = opt.l1_weight * (dist_loss + class_loss + img_IOU_loss/2) +\
                                      opt.reg_weight * reg_loss + \
                                      weighted_kl_loss
+                    # gen_loss_total = opt.l1_weight * (dist_loss) +\
+                    #                  opt.reg_weight * reg_loss + \
+                    #                  weighted_kl_loss
 
                 gen_loss_total.backward(retain_graph=False)
 

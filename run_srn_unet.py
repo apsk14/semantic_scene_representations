@@ -266,7 +266,7 @@ def test(dataset, srn_path, unet_path):
 
     #traj_dir = os.path.join(opt.logging_root, 'test_traj', dir_name)
     #comparison_dir = os.path.join(opt.logging_root, 'test_traj', dir_name, 'comparison')
-    traj_dir = os.path.join('/home/apsk14/data/', 'test_traj_chair_unet_multi', dir_name)
+    traj_dir = os.path.join('/home/apsk14/data/', 'test_traj_chair_unet_single', dir_name)
     #comparison_dir = os.path.join(traj_dir, 'comparison')
     # util.cond_mkdir(comparison_dir)
     util.cond_mkdir(traj_dir)
