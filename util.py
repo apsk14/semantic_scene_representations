@@ -135,6 +135,25 @@ def custom_load(model, path, discriminator=None, overwrite_embeddings=False, ove
             else:
                 param.requires_grad = False
 
+def custom_load_linear(model, path, discriminator=None, overwrite_embeddings=False, overwrite_renderer=False, optimizer=None):
+    if os.path.isdir(path):
+        checkpoint_path = sorted(glob(os.path.join(path, "*.pth")))[-1]
+    else:
+        checkpoint_path = path
+
+    whole_dict = torch.load(checkpoint_path)
+
+    state = model.state_dict()
+    state.update(whole_dict['model'])
+    model.load_state_dict(state, strict=False)
+
+    if overwrite_embeddings:
+        for name, param in model.named_parameters():
+            if name == 'linear.weight' or name == 'linear.bias':
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+
 def compare_models(model, path1, path2):
     if os.path.isdir(path1):
         checkpoint_path1 = sorted(glob(os.path.join(path, "*.pth")))[-1]
