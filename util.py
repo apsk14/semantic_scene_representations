@@ -67,6 +67,9 @@ def parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
 
     return full_intrinsic, grid_barycenter, scale, world2cam_poses
 
+def parse_comma_separated_integers(string):
+    return list(map(int, string.split(',')))
+
 def lin2img(tensor):
     batch_size, num_samples, channels = tensor.shape
     sidelen = np.sqrt(num_samples).astype(int)
