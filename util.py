@@ -211,7 +211,8 @@ def custom_save(model, path, discriminator=None, optimizer=None):
     if discriminator:
         whole_dict.update({'discriminator':discriminator.state_dict()})
     if optimizer:
-        whole_dict.update({'optimizer':optimizer.state_dict()})
+        for i, opt in enumerate(optimizer):
+            whole_dict.update({'optimizer_%d'%i:opt.state_dict()})
 
     torch.save(whole_dict, path)
 

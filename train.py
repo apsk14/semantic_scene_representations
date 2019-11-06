@@ -19,7 +19,7 @@ p.add_argument('--img_sidelengths', type=str, default='64,128', required=False,
                help='Progression of image sidelengths.'
                     'If comma-separated list, will train on each sidelength for respective max_steps.'
                     'Images are downsampled to the respective resolution.')
-p.add_argument('--max_steps_per_img_sidelength', type=str, default="20000,200000",
+p.add_argument('--max_steps_per_img_sidelength', type=str, default="10000,200000",
                help='Maximum number of optimization steps.'
                     'If comma-separated list, is understood as steps per image_sidelength.')
 p.add_argument('--batch_size_per_img_sidelength', type=str, default="92, 16",
@@ -43,7 +43,7 @@ p.add_argument('--kl_weight', type=float, default=1,
 p.add_argument('--reg_weight', type=float, default=1e-3,
                help='Weight for depth regularization term (lambda_depth in paper).')
 
-p.add_argument('--steps_til_ckpt', type=int, default=10000,
+p.add_argument('--steps_til_ckpt', type=int, default=5000,
                help='Number of iterations until checkpoint is saved.')
 p.add_argument('--steps_til_val', type=int, default=1000,
                help='Number of iterations until validation set is run.')
@@ -248,17 +248,18 @@ def train():
                         writer.add_scalar("val_ssim", np.mean(ssims), iter)
                     model.train()
 
+                if iter % opt.steps_til_ckpt == 0:
+                    util.custom_save(model,
+                                     os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
+                                     discriminator=None,
+                                     optimizer=[sparse_optimizer, dense_optimizer])
+
                 iter += 1
                 step += 1
 
                 if iter == cum_max_steps:
                     break
 
-                if iter % opt.steps_til_ckpt == 0:
-                    util.custom_save(model,
-                                     os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
-                                     discriminator=None,
-                                     optimizer=optimizer)
 
             if iter == cum_max_steps:
                 break

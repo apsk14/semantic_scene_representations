@@ -32,12 +32,6 @@ class SRNsModel(nn.Module):
 
         self.latent_dim = latent_dim
 
-        # self.colors = np.array([[1., 1., 1.],
-        #                         [0.42415977, 0.95022593, 0.88655337],
-        #                         [0.34309762, 0.95100353, 0.3231704 ],
-        #                         [0.48631192, 0.82279855, 0.80800228],
-        #                         [0.27445405, 0.42794667, 0.42610895],
-        #                         [0.53534125, 0.04302588, 0.9653457]])
         self.colors = np.concatenate([np.array([[1.,1.,1.]]),
                                       cm.rainbow(np.linspace(0, 1, NUM_CLASSES-1))[:,:3]],
                                      axis=0)
