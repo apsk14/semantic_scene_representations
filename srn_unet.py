@@ -86,7 +86,7 @@ class SRNsModel(nn.Module):
 
         # Losses
         self.l2_loss = nn.MSELoss(reduction='mean')
-        self.cross_entropy_loss = nn.CrossEntropyLoss(ignore_index=0, reduction='mean')
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
 
         # List of logs
         self.logs = list()
@@ -181,7 +181,7 @@ class UnetModel(nn.Module):
 
 
         self.unet = pytorch_prototyping.Unet(
-                 in_channels=3,
+                 in_channels=4,
                  out_channels=NUM_CLASSES,
                  nf0=64,
                  num_down=7,
@@ -201,7 +201,7 @@ class UnetModel(nn.Module):
                                 [0.53534125, 0.04302588, 0.9653457]])
 
 
-        self.cross_entropy_loss = nn.CrossEntropyLoss(ignore_index=0, reduction='mean')
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
 
         # List of logs
         self.logs = list()

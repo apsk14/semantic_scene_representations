@@ -86,7 +86,7 @@ class SRNsModel(nn.Module):
 
         # Losses
         self.l2_loss = nn.MSELoss(reduction='mean')
-        self.cross_entropy_loss = nn.CrossEntropyLoss(ignore_index=0, reduction='mean')
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
 
         # List of logs
         self.logs = list()

@@ -67,6 +67,9 @@ def parse_intrinsics(filepath, trgt_sidelength=None, invert_y=False):
 
     return full_intrinsic, grid_barycenter, scale, world2cam_poses
 
+def parse_comma_separated_integers(string):
+    return list(map(int, string.split(',')))
+
 def lin2img(tensor):
     batch_size, num_samples, channels = tensor.shape
     sidelen = np.sqrt(num_samples).astype(int)
@@ -208,7 +211,8 @@ def custom_save(model, path, discriminator=None, optimizer=None):
     if discriminator:
         whole_dict.update({'discriminator':discriminator.state_dict()})
     if optimizer:
-        whole_dict.update({'optimizer':optimizer.state_dict()})
+        for i, opt in enumerate(optimizer):
+            whole_dict.update({'optimizer_%d'%i:opt.state_dict()})
 
     torch.save(whole_dict, path)
 

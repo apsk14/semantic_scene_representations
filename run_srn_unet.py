@@ -153,7 +153,7 @@ def train(model,
                 class_loss = model.get_seg_loss(model_outputs, ground_truth)
                 img_IOU_loss = model.get_img_IOU_loss(model_outputs, ground_truth)
 
-                gen_loss_total = opt.l1_weight * (class_loss + img_IOU_loss/2)
+                gen_loss_total = opt.l1_weight * (class_loss)
 
 
                 gen_loss_total.backward(retain_graph=False)

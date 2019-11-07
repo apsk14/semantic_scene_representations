@@ -42,10 +42,10 @@ def params_to_filename(params):
 
 def load_rgb(path, sidelength=None):
     img = imageio.imread(path)
-    #alpha_channel = img[:, :, 3:].repeat(3, axis=2)
-    #img = img[:, :, :3]
+    alpha_channel = img[:, :, 3:].repeat(4, axis=2)
+    img = img[:, :, :4]
     img = skimage.img_as_float32(img)
-    #img[alpha_channel == 0] = 1.0
+    img[alpha_channel == 0] = 1.0
 
     img = square_crop_img(img)
 

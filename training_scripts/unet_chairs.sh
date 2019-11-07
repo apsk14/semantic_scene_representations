@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=0
 #/home/apsk14/data/final_data/Chair/Chair.val/
 #--img_sidelength 128 \
 
 #Train
 python ../run_srn_unet.py --train_test train \
-                      --data_root /home/apsk14/data/final_data/Table/Table.train/ \
-                      --val_root /home/apsk14/data/final_data/Table/Table.train_val/ \
-                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Table/unet \
-                      --batch_size 128 \
-                      --max_epoch 500 \
+                      --data_root /home/apsk14/data/final_data/Chair/Chair.train/ \
+                      --val_root /home/apsk14/data/final_data/Chair/Chair.train_val/ \
+                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Chair/unet_new \
+                      --batch_size 64 \
+                      --max_epoch 1000 \
+                      --l1_weight 8 \
               --no_preloading \
 
 ##Optimize Latent
