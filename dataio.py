@@ -52,8 +52,8 @@ class SceneInstanceDataset():
 
         object_name = instance_dir.split('/')[-4]
         object_dir = instance_dir.split('/')[-3]
-        if object_dir == 'Table.train_val':
-            object_dir = 'Table.train'
+        if object_dir == object_name + '.train_val':
+            object_dir = object_name + '.train'
         og_dir = '/media/data1/apsk14/srn_seg_data/' + object_name + '/' + object_dir
 
 
@@ -156,10 +156,10 @@ class SceneInstanceDataset():
         uv = torch.from_numpy(np.flip(uv, axis=0).copy()).long()
 
         uv = uv.reshape(2,-1).transpose(1,0)
-        rgbs = self.rgbs[idx].reshape(3, -1).transpose(1, 0)
-        segs = self.segs[idx].reshape(1, -1).transpose(1, 0)
-        # rgbs = self.rgbs[idx]
-        # segs = self.segs[idx]
+        # rgbs = self.rgbs[idx].reshape(3, -1).transpose(1, 0)
+        # segs = self.segs[idx].reshape(1, -1).transpose(1, 0)
+        rgbs = self.rgbs[idx]
+        segs = self.segs[idx]
         depths = depth.reshape(-1, 1)
 
         return Observation(instance_idx=torch.Tensor([self.instance_idx]).squeeze(),
