@@ -216,7 +216,10 @@ def transfer_labels(img_path, ins_to_seg, sidelength):
     img = load_seg(img_path, sidelength)
     uni, indices = np.unique(img, return_inverse=True)
     for i in np.arange(uni.size):
-        uni[i] = ins_to_seg[uni[i]]
+        if uni[i] in ins_to_seg.keys():
+            uni[i] = ins_to_seg[uni[i]]
+        else:
+            uni[i] = 0
     swapped_im = uni[indices].reshape(img.shape)
     return swapped_im
 

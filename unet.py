@@ -20,46 +20,8 @@ import hyperlayers
 
 import matplotlib.cm as cm
 
-#NUM_CLASSES = 18 # LAMPS
-NUM_CLASSES = 6 # Chairs
-
-class UnetModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.unet = pytorch_prototyping.Unet(
-            in_channels=4,
-            out_channels=NUM_CLASSES,
-            nf0=64,
-            num_down=7,
-            max_channels=512,
-            use_dropout=True,
-            upsampling_mode='transpose',
-            dropout_prob=0.1,
-            norm=nn.BatchNorm2d,
-            outermost_linear=True)
-
-        # colors for displaying segmented images
-        self.colors = np.concatenate([np.array([[1., 1., 1.]]),
-                                      cm.rainbow(np.linspace(0, 1, NUM_CLASSES - 1))[:, :3]],
-                                     axis=0)
-        # loss fn
-        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
-
-        # List of logs
-        self.logs = list()
-
-        print("*" * 100)
-        print(self)
-        print("*" * 100)
-        print("Number of parameters:")
-        util.print_network(self)
-        print("*" * 100)
-
-    def forward(self, input, z=None):
-        self.logs = list()
-        novel_views_seg = self.unet(input.cuda())
-        return novel_views_seg
+NUM_CLASSES = 18 # LAMPS
+#NUM_CLASSES = 6 # Chairs
 
 class SRNsModel(nn.Module):
     def __init__(self,
@@ -124,6 +86,98 @@ class SRNsModel(nn.Module):
         util.print_network(self)
         print("*" * 100)
 
+    def forward(self, input, z=None):
+        self.logs = list()
+
+        # Parse model input.
+        instance_idcs = input["instance_idx"].long().cuda()
+        pose = input["pose"].cuda()
+        intrinsics = input["intrinsics"].cuda()
+        uv = input["uv"].cuda().float()
+
+        batch_size, num_samples = uv.shape[:2]
+
+        self.z = self.latent_codes(instance_idcs)
+
+        phi = self.hyper_phi(self.z)
+
+        if not self.counter and self.training:
+            print(phi)
+
+        points_xyz, depth_maps, log = self.ray_marcher(cam2world=pose,
+                                                       intrinsics=intrinsics,
+                                                       uv=uv,
+                                                       phi=phi)
+        self.logs.extend(log)
+
+        v = phi(points_xyz)
+        novel_views = self.pixel_generator(v)
+
+        sidelen = int(np.sqrt(num_samples))
+        class_gen_input = v.permute(0,2,1).view(batch_size, self.num_hidden_units_phi, sidelen, sidelen)
+        novel_views_seg = self.class_generator(class_gen_input)
+        novel_views_seg = novel_views_seg.view(batch_size, NUM_CLASSES, -1).permute(0,2,1)
+
+        # Calculate normal map
+        with torch.no_grad():
+            batch_size = uv.shape[0]
+            x_cam = uv[:, :, 0].view(batch_size, -1)
+            y_cam = uv[:, :, 1].view(batch_size, -1)
+            z_cam = depth_maps.view(batch_size, -1)
+
+            normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
+            self.logs.append(('image', 'normals',
+                              torchvision.utils.make_grid(normals, scale_each=True, normalize=True), 100))
+
+        self.logs.append(('embedding', '', self.latent_codes.weight, 500))
+        self.logs.append(('scalar', 'embed_min', self.z.min(), 1))
+        self.logs.append(('scalar', 'embed_max', self.z.max(), 1))
+
+        if self.training:
+            self.counter += 1
+
+        return {"rgb":novel_views, "seg":novel_views_seg, "depth":depth_maps}
+
+
+class UnetModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.unet = pytorch_prototyping.Unet(
+            in_channels=4,
+            out_channels=NUM_CLASSES,
+            nf0=64,
+            num_down=7,
+            max_channels=512,
+            use_dropout=True,
+            upsampling_mode='transpose',
+            dropout_prob=0.1,
+            norm=nn.BatchNorm2d,
+            outermost_linear=True)
+
+        # colors for displaying segmented images
+        self.colors = np.concatenate([np.array([[1., 1., 1.]]),
+                                      cm.rainbow(np.linspace(0, 1, NUM_CLASSES - 1))[:, :3]],
+                                     axis=0)
+        # loss fn
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
+
+        # List of logs
+        self.logs = list()
+
+        print("*" * 100)
+        print(self)
+        print("*" * 100)
+        print("Number of parameters:")
+        util.print_network(self)
+        print("*" * 100)
+
+    def forward(self, input, z=None):
+        self.logs = list()
+        novel_views_seg = self.unet(input.cuda())
+        return novel_views_seg
+
+
     def get_regularization_loss(self, prediction, ground_truth):
         '''Computes regularization loss on final depth map (L_{depth} in eq. 6 in paper)
 
@@ -158,11 +212,12 @@ class SRNsModel(nn.Module):
         :param ground_truth: Ground-truth (unused).
         :return: image reconstruction loss.
         '''
-        pred_segs = prediction['seg']
-        pred_segs = pred_segs.permute(0, 2, 1)
+        pred_segs = prediction
+        #pred_segs = pred_segs.permute(0, 2, 1)
 
         trgt_segs = ground_truth['seg']
-        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long().cuda()
+        trgt_segs = util.lin2img(trgt_segs)
+        trgt_segs = trgt_segs.squeeze().long().cuda()
 
         loss = self.cross_entropy_loss(pred_segs, trgt_segs)
         return loss
@@ -226,121 +281,39 @@ class SRNsModel(nn.Module):
         normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
         normals = F.pad(normals, pad=(1, 1, 1, 1), mode='constant', value=1.)
 
-        pred_rgb = util.lin2img(pred_rgb)[:,0:3,:,:]
+        pred_rgb = util.lin2img(pred_rgb)
 
-        pred_seg = self.get_output_seg(pred)
+        pred_seg = self.get_output_seg(pred_seg)
         pred_seg = torch.from_numpy(pred_seg)
 
         if ground_truth is not None:
-            trgt_imgs, trgt_segs = model_input['rgb'],model_input['seg']
-            trgt_imgs = util.lin2img(trgt_imgs)[:,0:3,:,:]
+            trgt_imgs, trgt_segs = ground_truth
+            trgt_imgs = util.lin2img(trgt_imgs)
             trgt_segs = util.lin2img(trgt_segs)
             trgt_segs = (self.colors[trgt_segs.cpu().numpy()])[:,0,:,:].transpose(0, 3, 1, 2)
             trgt_segs = torch.from_numpy(trgt_segs)
-
 
             return torch.cat((normals.cpu(), pred_rgb.cpu(), trgt_imgs.cpu(),
                               pred_seg.cpu().float(), trgt_segs.cpu().float()), dim=3).numpy()
         else:
             return torch.cat((normals.cpu(), pred_rgb.cpu()), dim=3).numpy()
 
-
-    def get_comparisons_unet(self, model_input, pred_rgb, pred_seg,trgt_imgs, trgt_segs, model_output, ground_truth=None):
-        batch_size = pred_rgb.shape[0]
-        pred_depth = model_output['depth']
-        # Parse model input.
-        intrinsics = model_input["intrinsics"].cuda()
-        uv = model_input["uv"].cuda().float()
-
-        x_cam = uv[:, :, 0].view(batch_size, -1)
-        y_cam = uv[:, :, 1].view(batch_size, -1)
-        z_cam = pred_depth.view(batch_size, -1)
-
-        normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
-        normals = F.pad(normals, pad=(1, 1, 1, 1), mode='constant', value=1.)
-        #
-        # pred_rgb = util.lin2img(pred_rgb)[:,0:3,:,:]
-        #
-        # pred_seg = self.get_output_seg(pred_seg, tr)
-        pred_seg = torch.from_numpy(pred_seg)
-        pred_rgb = torch.from_numpy(pred_rgb)[:,0:3,:,:]
-
-        # if ground_truth is not None:
-        #     trgt_imgs, trgt_segs = model_input['rgb'],model_input['seg']
-        #     trgt_imgs = util.lin2img(trgt_imgs)[:,0:3,:,:]
-        #     trgt_segs = util.lin2img(trgt_segs)
-        #     trgt_segs = (self.colors[trgt_segs.cpu().numpy()])[:,0,:,:].transpose(0, 3, 1, 2)
-        trgt_imgs = trgt_imgs[:,0:3,:,:]
-        trgt_segs = torch.from_numpy(trgt_segs)
-
-
-        return torch.cat((normals.cpu(), pred_rgb.cpu(), trgt_imgs.cpu(),
-                              pred_seg.cpu().float(), trgt_segs.cpu().float()), dim=3).numpy()
-        #else:
-         #   return torch.cat((normals.cpu(), pred_rgb.cpu()), dim=3).numpy()
-
     def get_output_img(self, prediction):
-        pred = prediction['rgb']
-        return util.lin2img(pred)
+        return util.lin2img(prediction['rgb'])
 
     def get_output_seg(self, prediction, trgt=False):
         if not trgt:
-            pred = prediction['seg']
-            pred_segs, pred = torch.max(pred, dim=2)
-            pred = pred[:, :, None]
-        else:
-            pred = prediction
-        output_seg = util.lin2img(pred)
-        output_seg = (self.colors[output_seg.cpu().numpy().astype(int)])[:,0,:,:].transpose(0, 3, 1, 2)
-        return output_seg.astype(np.float32)
-
-    def get_output_seg_unet(self, prediction, trgt=False):
-        if not trgt:
-            pred_segs, pred = torch.max(prediction, dim=2)
-            pred = pred[:, :, None]
-        else:
-            pred = prediction
-        output_seg = util.lin2img(pred)
-        output_seg = (self.colors[output_seg.cpu().numpy().astype(int)])[:,0,:,:].transpose(0, 3, 1, 2)
-        return output_seg.astype(np.float32)
+            pred_segs, prediction = torch.max(prediction['seg'], dim=2)
+            prediction = prediction[:, :, None]
+        output_seg = util.lin2img(prediction)
+        output_seg = (self.colors[output_seg.cpu().numpy()])[:,0,:,:].transpose(0, 3, 1, 2)
+        return output_seg
 
     def get_IOU_vals(self, prediction , trgt_seg, confusion, part_intersect, part_union): # had arg confusion
         # confusion vector is [true pos, false pos, false neg]
         pred_segs = prediction['seg']
         pred_segs, seg_idx = torch.max(pred_segs, dim=2)
         pred_labels = seg_idx.cpu().numpy().squeeze()
-        real_label = trgt_seg.cpu().numpy().squeeze()
-
-        num_classes = NUM_CLASSES
-        cur_shape_iou_tot = 0.0
-        cur_shape_iou_cnt = 0
-        for cur_class in range(0, num_classes):
-
-            cur_gt_mask = (real_label == cur_class)
-            cur_pred_mask = (pred_labels == cur_class)
-
-            has_gt = (np.sum(cur_gt_mask) > 0)
-            has_pred = (np.sum(cur_pred_mask) > 0)
-
-            if has_gt or has_pred:
-                intersect = np.sum(cur_gt_mask & cur_pred_mask)
-                union = np.sum(cur_gt_mask | cur_pred_mask)
-                iou = intersect / union
-
-                cur_shape_iou_tot += iou
-                cur_shape_iou_cnt += 1
-
-                part_intersect[cur_class - 1] += intersect
-                part_union[cur_class - 1] += union
-
-        if cur_shape_iou_cnt == 0:
-            return 1
-        return cur_shape_iou_tot / cur_shape_iou_cnt
-
-    def get_IOU_vals_unet(self, prediction , trgt_seg, confusion, part_intersect, part_union): # had arg confusion
-        # confusion vector is [true pos, false pos, false neg]
-        pred_segs, prediction = torch.max(prediction, dim=2)
-        pred_labels = prediction.cpu().numpy().squeeze()
         real_label = trgt_seg.cpu().numpy().squeeze()
 
         num_classes = NUM_CLASSES
@@ -391,16 +364,14 @@ class SRNsModel(nn.Module):
         :param iter: Iteration number.
         :param prefix: Every summary will be prefixed with this string.
         '''
-        pred_rgb, pred_seg, pred_depth = predictions['rgb'], predictions['seg'], predictions['depth']
+        pred_seg = predictions
 
-        trgt_imgs = input['rgb'].cuda()
         trgt_segs = input['seg'].cuda()
+        trgt_segs = util.lin2img(trgt_segs)
         colors = self.colors
 
-        pred_seg, seg_idx = torch.max(pred_seg, dim=2)
-        seg_idx = seg_idx[:,:,None]
-
-        batch_size, num_samples, _ = trgt_imgs.shape
+        pred_seg, seg_idx = torch.max(pred_seg, dim=1)
+        seg_idx = seg_idx[:,None, :, :]
 
         # Module's own log
         for type, name, content, every_n in self.logs:
@@ -421,93 +392,10 @@ class SRNsModel(nn.Module):
                     writer.add_embedding(mat=content, global_step=iter)
 
         if not iter % 50:
-            # RGB image outputs
-            output_vs_gt = torch.cat((pred_rgb, trgt_imgs), dim=0)
-            output_vs_gt = util.lin2img(output_vs_gt)
-            print('MACKSi', torch.max(output_vs_gt))
-            print('DISPRGB', output_vs_gt.shape)
-            writer.add_image(prefix + "Output_vs_gt",
-                             torchvision.utils.make_grid(output_vs_gt[:,:3,:,:],
-                                                         scale_each=False,
-                                                         normalize=True).cpu().detach().numpy(),
-                             iter)
-
-            # Segmentation image outputs
             output_vs_gt_seg = torch.cat((seg_idx.int(), trgt_segs.int()), dim=0)
-            output_vs_gt_seg = util.lin2img(output_vs_gt_seg).int()
-            output_vs_gt_seg = torch.from_numpy(colors[output_vs_gt_seg.cpu().numpy()].squeeze()).permute(0,3,1,2)
-            print('DISPSEG', output_vs_gt_seg.shape)
+            # output_vs_gt_seg = util.lin2img(output_vs_gt_seg).int()
+            output_vs_gt_seg = torch.from_numpy(colors[output_vs_gt_seg.cpu().numpy()].squeeze()).permute(0, 3, 1, 2)
             writer.add_image(prefix + "Output_vs_gt_seg",
-                             torchvision.utils.make_grid(output_vs_gt_seg[:,:3,:,:],
+                             torchvision.utils.make_grid(output_vs_gt_seg,
                                                          scale_each=False,
-                                                         normalize=False).cpu().detach().numpy(),
-                             iter)
-
-            depth_maps_plot = util.lin2img(pred_depth)
-            writer.add_image(prefix + "pred_depth",
-                             torchvision.utils.make_grid(depth_maps_plot.repeat(1, 3, 1, 1),
-                                                         scale_each=True,
-                                                         normalize=True).cpu().detach().numpy(),
-                             iter)
-
-        writer.add_scalar(prefix + "out_min", pred_rgb.min(), iter)
-        writer.add_scalar(prefix + "out_max", pred_rgb.max(), iter)
-
-        writer.add_scalar(prefix + "trgt_min", trgt_imgs.min(), iter)
-        writer.add_scalar(prefix + "trgt_max", trgt_imgs.max(), iter)
-
-        if iter:
-            writer.add_scalar(prefix + "latent_reg_loss", self.latent_reg_loss, iter)
-
-    def forward(self, input, z=None):
-        self.logs = list()
-
-        # Parse model input.
-        instance_idcs = input["instance_idx"].long().cuda()
-        pose = input["pose"].cuda()
-        intrinsics = input["intrinsics"].cuda()
-        uv = input["uv"].cuda().float()
-
-        batch_size, num_samples = uv.shape[:2]
-
-        self.z = self.latent_codes(instance_idcs)
-
-        phi = self.hyper_phi(self.z)
-
-        if not self.counter and self.training:
-            print(phi)
-
-        points_xyz, depth_maps, log = self.ray_marcher(cam2world=pose,
-                                                       intrinsics=intrinsics,
-                                                       uv=uv,
-                                                       phi=phi)
-        self.logs.extend(log)
-
-        v = phi(points_xyz)
-        novel_views = self.pixel_generator(v)
-
-        sidelen = int(np.sqrt(num_samples))
-        class_gen_input = v.permute(0,2,1).view(batch_size, self.num_hidden_units_phi, sidelen, sidelen)
-        novel_views_seg = self.class_generator(class_gen_input)
-        novel_views_seg = novel_views_seg.view(batch_size, NUM_CLASSES, -1).permute(0,2,1)
-
-        # Calculate normal map
-        with torch.no_grad():
-            batch_size = uv.shape[0]
-            x_cam = uv[:, :, 0].view(batch_size, -1)
-            y_cam = uv[:, :, 1].view(batch_size, -1)
-            z_cam = depth_maps.view(batch_size, -1)
-
-            normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
-            self.logs.append(('image', 'normals',
-                              torchvision.utils.make_grid(normals, scale_each=True, normalize=True), 100))
-
-        self.logs.append(('embedding', '', self.latent_codes.weight, 500))
-        self.logs.append(('scalar', 'embed_min', self.z.min(), 1))
-        self.logs.append(('scalar', 'embed_max', self.z.max(), 1))
-
-        if self.training:
-            self.counter += 1
-
-        return {'rgb':novel_views, 'seg':novel_views_seg, 'depth':depth_maps}
-
+                                                         normalize=False).cpu().detach().numpy(), iter)

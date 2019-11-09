@@ -522,8 +522,7 @@ class UnetModel(nn.Module):
             writer.add_image(prefix + "Output_vs_gt_seg",
                              torchvision.utils.make_grid(output_vs_gt_seg,
                                                          scale_each=False,
-                                                         normalize=False).cpu().detach().numpy(),
-                             iter)
+                                                         normalize=False).cpu().detach().numpy(), iter)
 
 
             # rgb_loss = ((predictions.float().cuda() - trgt_imgs.float().cuda()) ** 2).mean(dim=2, keepdim=True)

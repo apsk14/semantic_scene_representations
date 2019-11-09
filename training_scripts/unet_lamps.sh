@@ -2,10 +2,10 @@
 
 
 #Train
-CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 python ../run_unet.py \
-    --config_filepath "/home/apsk14/srn_segmentation/config_chairs_unet.yml"\
+    --config_filepath "/home/apsk14/srn_segmentation/config_lamps_unet.yml"\
 
 
 

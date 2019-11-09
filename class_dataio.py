@@ -18,6 +18,7 @@ class SceneInstanceDataset():
     def __init__(self,
                  instance_idx,
                  instance_dir,
+                 stat_instance_dir,
                  specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
                  img_sidelength=None,
                  num_images=-1,
@@ -28,15 +29,13 @@ class SceneInstanceDataset():
         self.img_sidelength = img_sidelength
         self.instance_dir = instance_dir
 
-        object_name = instance_dir.split('/')[-4]
-        object_dir = instance_dir.split('/')[-3]
-
-        og_dir = os.path.join('/media/data1/apsk14/srn_seg_data/', object_name, object_dir)
+        #og_dir
 
         color_dir = os.path.join(instance_dir, "rgb")
         pose_dir = os.path.join(instance_dir, "pose")
         seg_dir = os.path.join(instance_dir, 'seg')
-        pn_dir = os.path.join(og_dir, os.path.basename(os.path.split(instance_dir)[0]), 'partnet')
+        #pn_dir = os.path.join(og_dir, os.path.basename(os.path.split(instance_dir)[0]), 'partnet')
+        pn_dir = os.path.join(stat_instance_dir,'partnet')
 
         if not os.path.isdir(color_dir):
             print("Error! root dir %s is wrong" % instance_dir)
@@ -114,6 +113,8 @@ class SceneClassDataset(torch.utils.data.Dataset):
 
     def __init__(self,
                  root_dir,
+                 stat_dir,
+                 obj_name,
                  img_sidelength=None,
                  max_num_instances=-1,
                  max_observations_per_instance=-1,
@@ -122,30 +123,35 @@ class SceneClassDataset(torch.utils.data.Dataset):
 
         self.samples_per_instance = samples_per_instance
         self.instance_dirs = sorted(glob(os.path.join(root_dir, "*/")))
+        self.stat_dirs = sorted(glob(os.path.join(stat_dir, "*/")))
 
         #obj_name = 'Chair'
         obj_name = 'Lamp'
 
         assert (len(self.instance_dirs) != 0), "No objects in the data directory"
+        assert (len(self.stat_dirs) != 0), "No objects in the stat directory"
 
         if max_num_instances != -1:
             self.instance_dirs = self.instance_dirs[:max_num_instances]
+            self.stat_dirs = self.stat_dirs[:max_num_instances]
 
-        in_fn = os.path.join('/media/data1/apsk14/srn_seg_data/', obj_name, obj_name+'-level-1.txt')
-        with open(in_fn, 'r') as fin:
+
+        seg_level_fn = os.path.join(os.path.dirname(stat_dir), obj_name+'-level-1.txt')
+        with open(seg_level_fn, 'r') as fin:
             part_name2id = {d.split()[1]: (cnt + 1) for cnt, d in enumerate(fin.readlines())}
-        in_fn = os.path.join('/media/data1/apsk14/srn_seg_data/', obj_name, obj_name + '.txt')
-        with open(in_fn, 'r') as fin:
+        seg_mapping_fn = os.path.join(os.path.dirname(stat_dir), obj_name + '.txt')
+        with open(seg_mapping_fn, 'r') as fin:
             part_old2new = {d.rstrip().split()[0]: d.rstrip().split()[1] for d in fin.readlines()}
 
         self.all_instances = [SceneInstanceDataset(instance_idx=idx,
                                                    instance_dir=dir,
+                                                   stat_instance_dir = dir_stat,
                                                    specific_observation_idcs=specific_observation_idcs,
                                                    img_sidelength=img_sidelength,
                                                    num_images=max_observations_per_instance,
                                                    part_name2id=part_name2id,
                                                    part_old2new=part_old2new)
-                              for idx, dir in enumerate(self.instance_dirs)]
+                              for idx, (dir, dir_stat) in enumerate(zip(self.instance_dirs, self.stat_dirs))]
 
         self.num_per_instance_observations = [len(obj) for obj in self.all_instances]
         self.num_instances = len(self.all_instances)

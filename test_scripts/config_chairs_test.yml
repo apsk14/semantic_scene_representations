@@ -1,0 +1,6 @@
+data_root: /media/data2/apsk14/srn_rendered_data/Chair/Chair.test # Path to chairs training dataset.
+stat_root: /media/data2/apsk14/srn_model_data/Chair/Chair.test #Path to stats for assigning label data
+img_sidelength: 128
+num_classes: 6
+obj_name: Chair
+
