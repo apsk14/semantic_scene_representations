@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-export CUDA_VISIBLE_DEVICES=8
+export CUDA_VISIBLE_DEVICES=2
 #/home/apsk14/data/final_data/Chair/Chair.val/
 #--img_sidelength 128 \
 #specific_observation_idcs 102 \
@@ -16,16 +16,22 @@ export CUDA_VISIBLE_DEVICES=8
 #		      --no_validation
 
 ##Optimize Latent
-python ../run_srn_linear.py --train_test train \
-                      --data_root /home/apsk14/data/final_data/Chair/Chair.train/ \
-                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/10_shot \
-                      --batch_size 64 \
-                      --max_epoch 5000 \
-                      --max_num_instances_train 10 \
-                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chair/train_vanilla/logs/10_16/03-14-47_/epoch_0016_iter_225000.pth \
-                      --overwrite_embeddings \
-		      --no_preloading \
-		      --no_validation
+
+
+python ../train_linear.py \
+    --config_filepath "/home/apsk14/srn_segmentation/config_chairs_linear.yml" \
+    --max_num_instances 3 \
+
+#python ../run_srn_linear.py --train_test train \
+#                      --data_root /home/apsk14/data/final_data/Chair/Chair.train/ \
+#                      --logging_root /home/sitzmann/data/deep_space/logging/srn_runs_final/Chairs/10_shot \
+#                      --batch_size 64 \
+#                      --max_epoch 5000 \
+#                      --max_num_instances_train 10 \
+#                      --checkpoint /home/sitzmann/data/deep_space/logging/srn_runs_final/Chair/train_vanilla/logs/10_16/03-14-47_/epoch_0016_iter_225000.pth \
+#                      --overwrite_embeddings \
+#		      --no_preloading \
+#		      --no_validation
 
 
 

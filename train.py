@@ -31,6 +31,8 @@ p.add_argument('--data_root', required=True, help='Path to directory with traini
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
+p.add_argument('--stat_root', required=True, help='Path to directory with statistics data.')
+p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
 
 p.add_argument('--lr', type=float, default=4e-4, help='learning rate. default=4e-4')
 
@@ -102,6 +104,8 @@ def train():
     max_steps_per_sidelength = util.parse_comma_separated_integers(opt.max_steps_per_img_sidelength)
 
     train_dataset = dataio.SceneClassDataset(root_dir=opt.data_root,
+                                             stat_dir=opt.stat_root,
+                                             obj_name=opt.obj_name,
                                              max_num_instances=opt.max_num_instances_train,
                                              max_observations_per_instance=opt.max_num_observations_train,
                                              img_sidelength=img_sidelengths[0],
@@ -117,6 +121,8 @@ def train():
         assert (opt.val_root is not None), "No validation directory passed."
 
         val_dataset = dataio.SceneClassDataset(root_dir=opt.val_root,
+                                               stat_dir=opt.stat_root,
+                                               obj_name=opt.obj_name,
                                                max_num_instances=opt.max_num_instances_val,
                                                max_observations_per_instance=opt.max_num_observations_val,
                                                img_sidelength=opt.img_sidelength,
