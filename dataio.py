@@ -23,6 +23,7 @@ class SceneInstanceDataset():
                  part_name2id={},
                  part_old2new={}):
         super().__init__()
+        
 
         self.instance_idx = instance_idx
         self.img_sidelength = img_sidelength

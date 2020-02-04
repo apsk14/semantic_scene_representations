@@ -142,11 +142,12 @@ class SceneClassDataset(torch.utils.data.Dataset):
             self.stat_dirs = self.stat_dirs[:max_num_instances]
 
 
-
         seg_level_fn = os.path.join(os.path.dirname(stat_dir), obj_name+'-level-1.txt')
+        obj_name = ''.join(e for e in obj_name if e.isalnum())
+        seg_level_fn = os.path.join(os.path.dirname(os.path.normpath(stat_dir)), ''.join([obj_name,'-level-1.txt']))
         with open(seg_level_fn, 'r') as fin:
             part_name2id = {d.split()[1]: (cnt + 1) for cnt, d in enumerate(fin.readlines())}
-        seg_mapping_fn = os.path.join(os.path.dirname(stat_dir), obj_name + '.txt')
+        seg_mapping_fn = os.path.join(os.path.dirname(os.path.normpath(stat_dir)), ''.join([obj_name,'.txt']))
         with open(seg_mapping_fn, 'r') as fin:
             part_old2new = {d.rstrip().split()[0]: d.rstrip().split()[1] for d in fin.readlines()}
 
@@ -193,7 +194,7 @@ class SceneClassDataset(torch.utils.data.Dataset):
             # flatten the list of list
             for b in entry:
                 for k in entry[0][0].keys():
-                    ret[k].extend( [bi[k] for bi in b])
+                    ret[k].extend([bi[k] for bi in b])
             for k in ret.keys():
                 if type(ret[k][0]) == torch.Tensor:
                    ret[k] = torch.stack(ret[k])
@@ -215,3 +216,31 @@ class SceneClassDataset(torch.utils.data.Dataset):
         ground_truth = [{'rgb':ray_bundle['rgb'], 'seg':ray_bundle['seg']} for ray_bundle in observations]
 
         return observations, ground_truth
+
+
+class SceneClassDatasetWithContext(SceneClassDataset):
+    """Dataset for a class of objects, where each datapoint is a SceneInstanceDataset."""
+
+    def __init__(self,
+                 root_dir,
+                 stat_dir,
+                 obj_name,
+                 num_context,
+                 img_sidelength=None,
+                 max_num_instances=-1,
+                 max_observations_per_instance=-1,
+                 specific_observation_idcs=None):
+        super().__init__(root_dir=root_dir, stat_dir=stat_dir, obj_name=obj_name, img_sidelength=img_sidelength,
+                         max_num_instances=max_num_instances, max_observations_per_instance=max_observations_per_instance,
+                         specific_observation_idcs=specific_observation_idcs, samples_per_instance=num_context+1)
+
+    def __getitem__(self, idx):
+        observations, ground_truth = super().__getitem__(idx)
+
+        new_observations = {'trgt_' + key:value for key, value in observations[0].items()}
+
+        collated_context = self.collate_fn([(observations[1:],ground_truth[1:])])[0]
+        new_observations.update(collated_context)
+
+        return [new_observations], [ground_truth[1]]
+
