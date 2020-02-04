@@ -2,18 +2,15 @@
 
 
 #Train
-export CUDA_VISIBLE_DEVICES=9
+export CUDA_VISIBLE_DEVICES=8
 
 python ../run_unet.py \
-    --config_filepath "/home/apsk14/srn-segmentation/config_chairs_unet.yml"\
+    --config_filepath "/home/apsk14/srn-segmentation/config_tables_unet.yml"\
     --max_num_instances_train 10 \
     --specific_observation_idcs 1,2,3 \
-    --logging_root "/media/data2/sitzmann/srn-segmentation/chairs_unet_30shot_dp0.4" \
+    --logging_root "/media/data2/sitzmann/srn-segmentation/table_unet_30shot_dp0.4" \
     --steps_til_ckpt 500 \
     --steps_til_val 100 \
-
-
-
 
 
 

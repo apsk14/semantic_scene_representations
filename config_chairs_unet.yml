@@ -1,10 +1,11 @@
-data_root: /media/data2/apsk14/srn_rendered_data/Chair/Chair.train # Path to chairs training dataset.
-stat_root: /media/data2/apsk14/srn_model_data/Chair/Chair.train #Path to stats for assigning label data
-val_root: /media/data2/apsk14/srn_rendered_data/Chair/Chair.train_val # Path to chairs validation set
-logging_root: /media/data2/apsk14/logging/Chairs
+data_root: /home/apsk14/data/final_data/Chair/Chair.train # Path to chairs training dataset.
+stat_root: /media/data1/apsk14/srn_seg_data/Chair/Chair.train #Path to stats for assigning label data
+val_root: /home/apsk14/data/final_data/Chair/Chair.train_val # Path to chairs validation set
 img_sidelengths: 128
-batch_size_per_img_sidelength: 64 # This is for a GPU with 48 GB of memory. Adapt accordingly for your GPU memory.
+batch_size_per_img_sidelength: 30 # This is for a GPU with 48 GB of memory. Adapt accordingly for your GPU memory.
 max_steps_per_img_sidelength: 170000
 num_classes: 6
 obj_name: Chair
 class_weight: 8
+max_num_instances_val: 50
+max_num_observations_val: 50

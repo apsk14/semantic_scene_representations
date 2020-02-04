@@ -10,7 +10,6 @@ import torchvision
 from custom_layers import *
 import util
 
-from dataio import Observation
 import data_util
 import skimage.measure, skimage.transform
 from torch.nn import functional as F
@@ -20,8 +19,9 @@ import hyperlayers
 
 import matplotlib.cm as cm
 
-NUM_CLASSES = 18 # LAMPS
+#NUM_CLASSES = 18 # LAMPS
 #NUM_CLASSES = 6 # Chairs
+NUM_CLASSES = 11 # Tables
 
 class SRNsModel(nn.Module):
     def __init__(self,
@@ -151,7 +151,7 @@ class UnetModel(nn.Module):
             max_channels=512,
             use_dropout=True,
             upsampling_mode='transpose',
-            dropout_prob=0.1,
+            dropout_prob=0.4,
             norm=nn.BatchNorm2d,
             outermost_linear=True)
 

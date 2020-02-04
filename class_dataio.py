@@ -97,13 +97,16 @@ class SceneInstanceDataset():
         segs = data_util.transfer_labels(self.seg_paths[idx], self.transfer_map, self.img_sidelength)
         segs = segs.reshape(1, -1).transpose(1, 0)
 
+        instance_id = self.instance_dir.split('/')[-2]
+
         sample = {
             "instance_idx": torch.Tensor([self.instance_idx]).squeeze(),
             "rgb": torch.from_numpy(rgb).float(),
             "pose": torch.from_numpy(pose).float(),
             "uv": uv,
             "seg": torch.from_numpy(segs).int(),
-            "intrinsics": intrinsics
+            "intrinsics": intrinsics,
+            "instance_id": instance_id
         }
         return sample
 
@@ -119,14 +122,17 @@ class SceneClassDataset(torch.utils.data.Dataset):
                  max_num_instances=-1,
                  max_observations_per_instance=-1,
                  specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
-                 samples_per_instance=2):
+                 samples_per_instance=1):
+
 
         self.samples_per_instance = samples_per_instance
         self.instance_dirs = sorted(glob(os.path.join(root_dir, "*/")))
-        self.stat_dirs = sorted(glob(os.path.join(stat_dir, "*/")))
+        #self.stat_dirs = sorted(glob(os.path.join(stat_dir, "*/")))
+        self.stat_dirs = list()
 
-        #obj_name = 'Chair'
-        obj_name = 'Lamp'
+        for i in range(len(self.instance_dirs)):
+            self.stat_dirs.append(os.path.join(stat_dir,self.instance_dirs[i].split('/')[-2] + '/',))
+            assert (self.instance_dirs[i].split('/')[-2] == self.stat_dirs[i].split('/')[-2]), "Misaligned!" + self.instance_dirs[i].split('/')[-2] + 'vs' + self.stat_dirs[i].split('/')[-2]
 
         assert (len(self.instance_dirs) != 0), "No objects in the data directory"
         assert (len(self.stat_dirs) != 0), "No objects in the stat directory"
@@ -134,6 +140,7 @@ class SceneClassDataset(torch.utils.data.Dataset):
         if max_num_instances != -1:
             self.instance_dirs = self.instance_dirs[:max_num_instances]
             self.stat_dirs = self.stat_dirs[:max_num_instances]
+
 
 
         seg_level_fn = os.path.join(os.path.dirname(stat_dir), obj_name+'-level-1.txt')

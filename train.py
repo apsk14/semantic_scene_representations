@@ -212,12 +212,12 @@ def train():
                 weighted_latent_loss = opt.kl_weight * latent_loss
                 weighted_class_loss = opt.class_weight * class_loss
 
-                if opt.overwrite_embeddings:
-                    total_loss = (weighted_dist_loss
+                #if opt.overwrite_embeddings:
+                total_loss = (weighted_dist_loss
                                   + weighted_reg_loss
                                   + weighted_latent_loss)
-                else:
-                    total_loss = (weighted_dist_loss
+                #else:
+                total_loss = (weighted_dist_loss
                               + weighted_class_loss
                               + weighted_reg_loss
                               + weighted_latent_loss)

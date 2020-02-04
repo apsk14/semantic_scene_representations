@@ -10,7 +10,6 @@ import torchvision
 from custom_layers import *
 import util
 
-from dataio import Observation
 import data_util
 import skimage.measure, skimage.transform
 from torch.nn import functional as F
@@ -22,6 +21,39 @@ import matplotlib.cm as cm
 
 #NUM_CLASSES = 18 # LAMPS
 NUM_CLASSES = 6 # Chairs
+#NUM_CLASSES = 11 # Tables
+
+class MLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.num_hidden_units_phi = 256
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
+        self.mlp = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
+                                                       num_hidden_layers=3,
+                                                       in_features=self.num_hidden_units_phi,
+                                                       out_features=NUM_CLASSES,
+                                                       outermost_linear=True)
+
+    def get_seg_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        pred_segs = prediction['seg']
+        pred_segs = pred_segs.permute(0, 2, 1)
+
+        trgt_segs = ground_truth['seg']
+        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long().cuda()
+
+        loss = self.cross_entropy_loss(pred_segs, trgt_segs)
+        return loss
+
+    def forward(self, input, z=None):
+        self.logs = list()
+        novel_views_seg = self.mlp(input.cuda())
+        return {'seg': novel_views_seg}
 
 class LinearModel(nn.Module):
     def __init__(self):
@@ -29,7 +61,24 @@ class LinearModel(nn.Module):
 
         self.num_hidden_units_phi = 256
         self.linear = nn.Linear(in_features=self.num_hidden_units_phi, out_features=NUM_CLASSES, bias=True)
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
 
+
+    def get_seg_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        pred_segs = prediction['seg']
+        pred_segs = pred_segs.permute(0, 2, 1)
+
+        trgt_segs = ground_truth['seg']
+        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long().cuda()
+
+        loss = self.cross_entropy_loss(pred_segs, trgt_segs)
+        return loss
 
     def forward(self, input, z=None):
         self.logs = list()
@@ -216,6 +265,39 @@ class SRNsModel(nn.Module):
                               pred_seg.cpu().float(), trgt_segs.cpu().float()), dim=3).numpy()
         else:
             return torch.cat((normals.cpu(), pred_rgb.cpu()), dim=3).numpy()
+
+
+    def write_eval(self, model_input, pred, path, filename):
+        pred_rgb, pred_seg, pred_depth = pred['rgb'], pred['seg'], pred['depth']
+        batch_size = pred_rgb.shape[0]
+
+        # Parse model input.
+        intrinsics = model_input["intrinsics"].cuda()
+        uv = model_input["uv"].cuda().float()
+
+        x_cam = uv[:, :, 0].view(batch_size, -1)
+        y_cam = uv[:, :, 1].view(batch_size, -1)
+        z_cam = pred_depth.view(batch_size, -1)
+
+        normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
+        normals = F.pad(normals, pad=(1, 1, 1, 1), mode='constant', value=1.)
+
+        pred_rgb = self.get_output_img(pred)
+
+        pred_seg = self.get_output_seg(pred)
+        pred_seg = torch.from_numpy(pred_seg)
+
+        util.cond_mkdir(os.path.join(path, 'rgb'))
+        util.cond_mkdir(os.path.join(path, 'seg'))
+        util.cond_mkdir(os.path.join(path, 'normal'))
+
+        pred_rgb = util.convert_image(pred_rgb.squeeze())
+        pred_seg = util.convert_image(pred_seg.squeeze())
+        normals = util.convert_image(normals.squeeze())
+
+        util.write_img(pred_rgb, os.path.join(path, 'rgb/' + filename))
+        util.write_img(pred_seg, os.path.join(path, 'seg/' + filename))
+        util.write_img(normals, os.path.join(path, 'normal/' + filename))
 
 
     def get_comparisons_unet(self, model_input, pred_rgb, pred_seg,trgt_imgs, trgt_segs, model_output, ground_truth=None):
@@ -419,7 +501,10 @@ class SRNsModel(nn.Module):
 
         batch_size, num_samples = uv.shape[:2]
 
-        self.z = self.latent_codes(instance_idcs)
+        if z is None:
+            self.z = self.latent_codes(instance_idcs)
+        else:
+            self.z = z
 
         phi = self.hyper_phi(self.z)
 

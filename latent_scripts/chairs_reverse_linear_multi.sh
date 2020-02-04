@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-export CUDA_VISIBLE_DEVICES=9
+export CUDA_VISIBLE_DEVICES=7
 #/home/apsk14/data/final_data/Chair/Chair.val/
 #--img_sidelength 128 \
 #specific_observation_idcs 102 \
@@ -19,14 +19,12 @@ export CUDA_VISIBLE_DEVICES=9
 
 
 python ../train_linear.py \
-    --config_filepath "/home/apsk14/srn_segmentation/config_chairs_linear.yml" \
+    --config_filepath "/home/apsk14/srn-segmentation/config_chairs_linear.yml" \
     --max_num_instances_train 10 \
-    --specific_observation_idcs 1,2,3 \
-    --model_type linear \
-    --checkpoint_path "/media/data3/apsk14/srn_new_logging/Chair/train_vanilla/checkpoints/epoch_0010_iter_105000.pth"
-
-
-
+    --l1_weight=0. \
+    --overwrite_embeddings \
+    --checkpoint_path "/media/data2/sitzmann/srn-segmentation/chairs_train_vanilla_continued/checkpoints/epoch_0005_iter_105000.pth" \
+    --linear_path "/media/data2/sitzmann/srn-segmentation/Chairs_linear/checkpoints/epoch_2000_iter_020000.pth"
 
 #python ../run_srn_linear.py --train_test train \
 #                      --data_root /home/apsk14/data/final_data/Chair/Chair.train/ \

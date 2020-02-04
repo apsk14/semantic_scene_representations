@@ -10,7 +10,6 @@ import torchvision
 from custom_layers import *
 import util
 
-from dataio import Observation
 import data_util
 import skimage.measure, skimage.transform
 from torch.nn import functional as F
@@ -20,8 +19,71 @@ import hyperlayers
 
 import matplotlib.cm as cm
 
+NUM_CLASSES = 11 # Tables
 #NUM_CLASSES = 18 # LAMPS
-NUM_CLASSES = 6 # Chairs
+#NUM_CLASSES = 6 # Chairs
+
+class MLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.num_hidden_units_phi = 256
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
+        self.mlp = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
+                                                       num_hidden_layers=3,
+                                                       in_features=self.num_hidden_units_phi,
+                                                       out_features=NUM_CLASSES,
+                                                       outermost_linear=True)
+
+    def get_seg_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        pred_segs = prediction['seg']
+        pred_segs = pred_segs.permute(0, 2, 1)
+
+        trgt_segs = ground_truth['seg']
+        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long().cuda()
+
+        loss = self.cross_entropy_loss(pred_segs, trgt_segs)
+        return loss
+
+    def forward(self, input, z=None):
+        self.logs = list()
+        novel_views_seg = self.mlp(input.cuda())
+        return {'seg': novel_views_seg}
+
+class LinearModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.num_hidden_units_phi = 256
+        self.linear = nn.Linear(in_features=self.num_hidden_units_phi, out_features=NUM_CLASSES, bias=True)
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
+
+
+    def get_seg_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        pred_segs = prediction['seg']
+        pred_segs = pred_segs.permute(0, 2, 1)
+
+        trgt_segs = ground_truth['seg']
+        trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long().cuda()
+
+        loss = self.cross_entropy_loss(pred_segs, trgt_segs)
+        return loss
+
+    def forward(self, input, z=None):
+        self.logs = list()
+        novel_views_seg = self.linear(input.cuda())
+        return {'seg':novel_views_seg}
 
 class UnetModel(nn.Module):
     def __init__(self):
@@ -56,19 +118,74 @@ class UnetModel(nn.Module):
         util.print_network(self)
         print("*" * 100)
 
+    def get_comparisons_unet(self, pred_seg, trgt_segs, ground_truth=None):
+
+        pred_seg = torch.from_numpy(pred_seg)
+        trgt_segs = torch.from_numpy(trgt_segs)
+
+        return torch.cat((pred_seg.cpu().float(), trgt_segs.cpu().float()), dim=3).numpy()
+        #else:
+         #   return torch.cat((normals.cpu(), pred_rgb.cpu()), dim=3).numpy()
+
+    def get_output_seg(self, prediction, trgt=False):
+        if not trgt:
+            pred_segs, pred = torch.max(prediction, dim=2)
+            pred = pred[:, :, None]
+        else:
+            pred = prediction
+        output_seg = util.lin2img(pred)
+        output_seg = (self.colors[output_seg.cpu().numpy().astype(int)])[:,0,:,:].transpose(0, 3, 1, 2)
+        return output_seg.astype(np.float32)
+
+    def get_IOU_vals(self, prediction , trgt_seg, confusion, part_intersect, part_union): # had arg confusion
+        # confusion vector is [true pos, false pos, false neg]
+        # pred_segs = prediction['seg']
+        pred_segs, seg_idx = torch.max(prediction, dim=2)
+        pred_labels = seg_idx.cpu().numpy().squeeze()
+        real_label = trgt_seg.cpu().numpy().squeeze()
+
+        num_classes = NUM_CLASSES
+        cur_shape_iou_tot = 0.0
+        cur_shape_iou_cnt = 0
+        for cur_class in range(0, num_classes):
+
+            cur_gt_mask = (real_label == cur_class)
+            cur_pred_mask = (pred_labels == cur_class)
+
+            has_gt = (np.sum(cur_gt_mask) > 0)
+            has_pred = (np.sum(cur_pred_mask) > 0)
+
+            if has_gt or has_pred:
+                intersect = np.sum(cur_gt_mask & cur_pred_mask)
+                union = np.sum(cur_gt_mask | cur_pred_mask)
+                iou = intersect / union
+
+                cur_shape_iou_tot += iou
+                cur_shape_iou_cnt += 1
+
+                part_intersect[cur_class] += intersect
+                part_union[cur_class ] += union
+
+        if cur_shape_iou_cnt == 0:
+            return 1
+        return cur_shape_iou_tot / cur_shape_iou_cnt
+
     def forward(self, input, z=None):
         self.logs = list()
         novel_views_seg = self.unet(input.cuda())
         return novel_views_seg
 
+
 class SRNsModel(nn.Module):
     def __init__(self,
                  num_instances,
                  latent_dim,
-                 tracing_steps):
+                 tracing_steps,
+                 seg=True):
         super().__init__()
 
         self.latent_dim = latent_dim
+        self.seg = seg
 
         self.colors = np.concatenate([np.array([[1.,1.,1.]]),
                                       cm.rainbow(np.linspace(0, 1, NUM_CLASSES-1))[:,:3]],
@@ -99,15 +216,16 @@ class SRNsModel(nn.Module):
                                                            out_features=4,
                                                            outermost_linear=True)
 
-        self.class_generator = pytorch_prototyping.Unet(in_channels=self.num_hidden_units_phi,
-                                                        out_channels=NUM_CLASSES,
-                                                        outermost_linear=True,
-                                                        use_dropout=False,
-                                                        dropout_prob=0.1,
-                                                        nf0=64,
-                                                        norm=nn.BatchNorm2d,
-                                                        max_channels=128,
-                                                        num_down=4)
+        if seg:
+            self.class_generator = pytorch_prototyping.Unet(in_channels=self.num_hidden_units_phi,
+                                                            out_channels=NUM_CLASSES,
+                                                            outermost_linear=True,
+                                                            use_dropout=False,
+                                                            dropout_prob=0.1,
+                                                            nf0=64,
+                                                            norm=nn.BatchNorm2d,
+                                                            max_channels=128,
+                                                            num_down=4)
         self.counter = 0
 
         # Losses
@@ -244,10 +362,10 @@ class SRNsModel(nn.Module):
         else:
             return torch.cat((normals.cpu(), pred_rgb.cpu()), dim=3).numpy()
 
-
-    def get_comparisons_unet(self, model_input, pred_rgb, pred_seg,trgt_imgs, trgt_segs, model_output, ground_truth=None):
+    def write_eval(self, model_input, pred, path, filename):
+        pred_rgb, pred_seg, pred_depth = pred['rgb'], pred['seg'], pred['depth']
         batch_size = pred_rgb.shape[0]
-        pred_depth = model_output['depth']
+
         # Parse model input.
         intrinsics = model_input["intrinsics"].cuda()
         uv = model_input["uv"].cuda().float()
@@ -258,24 +376,34 @@ class SRNsModel(nn.Module):
 
         normals = geometry.compute_normal_map(x_img=x_cam, y_img=y_cam, z=z_cam, intrinsics=intrinsics)
         normals = F.pad(normals, pad=(1, 1, 1, 1), mode='constant', value=1.)
-        #
-        # pred_rgb = util.lin2img(pred_rgb)[:,0:3,:,:]
-        #
-        # pred_seg = self.get_output_seg(pred_seg, tr)
-        pred_seg = torch.from_numpy(pred_seg)
-        pred_rgb = torch.from_numpy(pred_rgb)[:,0:3,:,:]
 
-        # if ground_truth is not None:
-        #     trgt_imgs, trgt_segs = model_input['rgb'],model_input['seg']
-        #     trgt_imgs = util.lin2img(trgt_imgs)[:,0:3,:,:]
-        #     trgt_segs = util.lin2img(trgt_segs)
-        #     trgt_segs = (self.colors[trgt_segs.cpu().numpy()])[:,0,:,:].transpose(0, 3, 1, 2)
-        trgt_imgs = trgt_imgs[:,0:3,:,:]
+        pred_rgb = self.get_output_img(pred)
+
+        pred_seg = self.get_output_seg(pred)
+        pred_seg = torch.from_numpy(pred_seg)
+
+        util.cond_mkdir(os.path.join(path, 'rgb'))
+        util.cond_mkdir(os.path.join(path, 'seg'))
+        util.cond_mkdir(os.path.join(path, 'normal'))
+
+        pred_rgb = util.convert_image(pred_rgb.squeeze())
+        pred_seg = util.convert_image(pred_seg.squeeze())
+        normals = util.convert_image(normals.squeeze())
+
+        util.write_img(pred_rgb, os.path.join(path, 'rgb/' + filename))
+        util.write_img(pred_seg, os.path.join(path, 'seg/' + filename))
+        util.write_img(normals, os.path.join(path, 'normal/' + filename))
+
+
+
+
+    def get_comparisons_unet(self, model_input, pred_rgb, pred_seg,trgt_imgs, trgt_segs, model_output, ground_truth=None):
+        batch_size = pred_rgb.shape[0]
+
+        pred_seg = torch.from_numpy(pred_seg)
         trgt_segs = torch.from_numpy(trgt_segs)
 
-
-        return torch.cat((normals.cpu(), pred_rgb.cpu(), trgt_imgs.cpu(),
-                              pred_seg.cpu().float(), trgt_segs.cpu().float()), dim=3).numpy()
+        return torch.cat((pred_seg.cpu().float(), trgt_segs.cpu().float()), dim=3).numpy()
         #else:
          #   return torch.cat((normals.cpu(), pred_rgb.cpu()), dim=3).numpy()
 
@@ -294,20 +422,11 @@ class SRNsModel(nn.Module):
         output_seg = (self.colors[output_seg.cpu().numpy().astype(int)])[:,0,:,:].transpose(0, 3, 1, 2)
         return output_seg.astype(np.float32)
 
-    def get_output_seg_unet(self, prediction, trgt=False):
-        if not trgt:
-            pred_segs, pred = torch.max(prediction, dim=2)
-            pred = pred[:, :, None]
-        else:
-            pred = prediction
-        output_seg = util.lin2img(pred)
-        output_seg = (self.colors[output_seg.cpu().numpy().astype(int)])[:,0,:,:].transpose(0, 3, 1, 2)
-        return output_seg.astype(np.float32)
 
     def get_IOU_vals(self, prediction , trgt_seg, confusion, part_intersect, part_union): # had arg confusion
         # confusion vector is [true pos, false pos, false neg]
-        pred_segs = prediction['seg']
-        pred_segs, seg_idx = torch.max(pred_segs, dim=2)
+        # pred_segs = prediction['seg']
+        pred_segs, seg_idx = torch.max(prediction, dim=2)
         pred_labels = seg_idx.cpu().numpy().squeeze()
         real_label = trgt_seg.cpu().numpy().squeeze()
 
@@ -330,8 +449,8 @@ class SRNsModel(nn.Module):
                 cur_shape_iou_tot += iou
                 cur_shape_iou_cnt += 1
 
-                part_intersect[cur_class - 1] += intersect
-                part_union[cur_class - 1] += union
+                part_intersect[cur_class] += intersect
+                part_union[cur_class ] += union
 
         if cur_shape_iou_cnt == 0:
             return 1
@@ -470,7 +589,10 @@ class SRNsModel(nn.Module):
 
         batch_size, num_samples = uv.shape[:2]
 
-        self.z = self.latent_codes(instance_idcs)
+        if z is None:
+            self.z = self.latent_codes(instance_idcs)
+        else:
+            self.z = z
 
         phi = self.hyper_phi(self.z)
 
@@ -485,11 +607,6 @@ class SRNsModel(nn.Module):
 
         v = phi(points_xyz)
         novel_views = self.pixel_generator(v)
-
-        sidelen = int(np.sqrt(num_samples))
-        class_gen_input = v.permute(0,2,1).view(batch_size, self.num_hidden_units_phi, sidelen, sidelen)
-        novel_views_seg = self.class_generator(class_gen_input)
-        novel_views_seg = novel_views_seg.view(batch_size, NUM_CLASSES, -1).permute(0,2,1)
 
         # Calculate normal map
         with torch.no_grad():
@@ -508,6 +625,16 @@ class SRNsModel(nn.Module):
 
         if self.training:
             self.counter += 1
+
+
+        if self.seg:
+            sidelen = int(np.sqrt(num_samples))
+            class_gen_input = v.permute(0,2,1).view(batch_size, self.num_hidden_units_phi, sidelen, sidelen)
+            novel_views_seg = self.class_generator(class_gen_input)
+            novel_views_seg = novel_views_seg.view(batch_size, NUM_CLASSES, -1).permute(0,2,1)
+            return {"rgb":novel_views, "seg":novel_views_seg, "depth":depth_maps, "features":v}
+        else:
+            return {"rgb":novel_views, "depth":depth_maps, "features":v}
 
         return {'rgb':novel_views, 'seg':novel_views_seg, 'depth':depth_maps}
 
