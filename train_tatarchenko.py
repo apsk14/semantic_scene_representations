@@ -34,10 +34,12 @@ p.add_argument('--logging_root', type=str, default='./logs',
 p.add_argument('--stat_root', required=True, help='Path to directory with statistics data.')
 p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
 
-p.add_argument('--lr', type=float, default=4e-4, help='learning rate. default=4e-4')
+p.add_argument('--lr', type=float, default=1e-4, help='learning rate. default=1e-4')
 
 p.add_argument('--class_weight', type=float, default=8,
                help='Weight for l1 loss term (lambda_img in paper).')
+p.add_argument('--num_classes', type=int, default=6,
+               help='number of classes in segmentation.')
 p.add_argument('--l1_weight', type=float, default=200,
                help='Weight for l1 loss term (lambda_img in paper).')
 p.add_argument('--kl_weight', type=float, default=1,
@@ -52,7 +54,7 @@ p.add_argument('--steps_til_val', type=int, default=1000,
 p.add_argument('--no_validation', action='store_true', default=False,
                help='If no validation set should be used.')
 
-p.add_argument('--preload', action='store_true', default=False,
+p.add_argument('--preload', action='store_true', default=True,
                help='Whether to preload data to RAM.')
 
 p.add_argument('--checkpoint_path', default=None,
@@ -70,9 +72,9 @@ p.add_argument('--max_num_instances_train', type=int, default=-1,
                help='If \'data_root\' has more instances, only the first max_num_instances_train are used')
 p.add_argument('--max_num_observations_train', type=int, default=50, required=False,
                help='If an instance has more observations, only the first max_num_observations_train are used')
-p.add_argument('--max_num_instances_val', type=int, default=10, required=False,
+p.add_argument('--max_num_instances_val', type=int, default=200, required=False,
                help='If \'val_root\' has more instances, only the first max_num_instances_val are used')
-p.add_argument('--max_num_observations_val', type=int, default=10, required=False,
+p.add_argument('--max_num_observations_val', type=int, default=-1, required=False,
                help='Maximum numbers of observations per validation instance')
 
 p.add_argument('--has_params', action='store_true', default=False,
@@ -125,11 +127,11 @@ def train():
                                                           obj_name=opt.obj_name,
                                                           max_num_instances=opt.max_num_instances_val,
                                                           max_observations_per_instance=opt.max_num_observations_val,
-                                                          img_sidelength=opt.img_sidelengths[0],
+                                                          img_sidelength=img_sidelengths[0],
                                                           specific_observation_idcs=specific_observation_idcs,
                                                           num_context=1)
 
-    model = TatarchenkoAutoencoder()
+    model = TatarchenkoAutoencoder(opt.num_classes)
     model.train()
     model.cuda()
 
@@ -159,7 +161,7 @@ def train():
 
     writer = SummaryWriter(events_dir)
     iter = opt.start_step
-    epoch = iter // len(train_dataset)
+    epoch = (iter*batch_size_per_sidelength[0]) // len(train_dataset)
     step = 0
 
     print('Beginning training...')
@@ -193,6 +195,10 @@ def train():
         # Loops over epochs.
         while True:
             for model_input, ground_truth in train_dataloader:
+                # Squeeze out additional dimension
+                model_input = {key:value.squeeze(1) if 'rgb' in key else value for key, value in model_input.items()}
+                ground_truth = {key:value.squeeze(1)  if 'rgb' in key else value for key, value in ground_truth.items()}
+
                 model_outputs = model(model_input)
 
                 dense_optimizer.zero_grad()
@@ -218,7 +224,7 @@ def train():
                       (iter, epoch, weighted_dist_loss, weighted_class_loss,
                        weighted_latent_loss, weighted_reg_loss))
 
-                model.write_updates(writer, model_input, model_outputs, iter)
+                model.write_updates(writer, model_input, ground_truth, model_outputs, iter)
                 writer.add_scalar("scaled_class_loss", weighted_class_loss, iter)
                 writer.add_scalar("scaled_distortion_loss", weighted_dist_loss, iter)
                 writer.add_scalar("scaled_regularization_loss", weighted_reg_loss, iter)
@@ -246,15 +252,15 @@ def train():
                             model.write_updates(writer, model_input, model_outputs, iter, prefix='val_')
                             counter += 1
 
-                            if counter == 100:
+                            if counter == 10:
                                 break
 
-                        writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
+                        writer.add_scalar("scaled_val_dist_loss", opt.l1_weight * np.mean(dist_losses), iter)
                         writer.add_scalar("val_psnr", np.mean(psnrs), iter)
                         writer.add_scalar("val_ssim", np.mean(ssims), iter)
 
                         print("*"*100)
-                        print("Validation error: ", np.mean(dist_losses))
+                        print("Validation error: ", opt.l1_weight * np.mean(dist_losses))
                         print("*"*100)
                     model.train()
 

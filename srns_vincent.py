@@ -19,9 +19,9 @@ import hyperlayers
 
 import matplotlib.cm as cm
 
-NUM_CLASSES = 11 # Tables
+#NUM_CLASSES = 11 # Tables
 #NUM_CLASSES = 18 # LAMPS
-#NUM_CLASSES = 6 # Chairs
+NUM_CLASSES = 6 # Chairs
 
 class MLP(nn.Module):
     def __init__(self):
@@ -97,7 +97,7 @@ class UnetModel(nn.Module):
             max_channels=512,
             use_dropout=True,
             upsampling_mode='transpose',
-            dropout_prob=0.1,
+            dropout_prob=0.2,
             norm=nn.BatchNorm2d,
             outermost_linear=True)
 
@@ -117,6 +117,23 @@ class UnetModel(nn.Module):
         print("Number of parameters:")
         util.print_network(self)
         print("*" * 100)
+
+    def get_seg_loss(self, prediction, ground_truth):
+        '''Computes loss on predicted image (L_{img} in eq. 6 in paper)
+
+        :param prediction (tuple): Output of forward pass.
+        :param ground_truth: Ground-truth (unused).
+        :return: image reconstruction loss.
+        '''
+        pred_segs = prediction
+        #pred_segs = pred_segs.permute(0, 2, 1)
+
+        trgt_segs = ground_truth['seg']
+        trgt_segs = util.lin2img(trgt_segs)
+        trgt_segs = trgt_segs.squeeze().long().cuda()
+
+        loss = self.cross_entropy_loss(pred_segs, trgt_segs)
+        return loss
 
     def get_comparisons_unet(self, pred_seg, trgt_segs, ground_truth=None):
 
@@ -175,17 +192,66 @@ class UnetModel(nn.Module):
         novel_views_seg = self.unet(input.cuda())
         return novel_views_seg
 
+    def write_updates(self, writer, input, predictions, iter, prefix=''):
+        '''Writes tensorboard summaries using tensorboardx api.
+
+        :param writer: tensorboardx writer object.
+        :param predictions: Output of forward pass.
+        :param ground_truth: Ground truth.
+        :param iter: Iteration number.
+        :param prefix: Every summary will be prefixed with this string.
+        '''
+        pred_seg = torch.reshape(predictions, (predictions.shape[0], predictions.shape[1], predictions.shape[2] * predictions.shape[2]))
+        pred_seg = pred_seg.permute(0, 2, 1)
+
+        trgt_segs = input['seg'].cuda()
+        colors = self.colors
+
+        pred_seg, seg_idx = torch.max(pred_seg, dim=2)
+        seg_idx = seg_idx[:,:,None]
+
+
+        # Module's own log
+        for type, name, content, every_n in self.logs:
+            name = prefix + name
+
+            if not iter % every_n:
+                if type == 'image':
+                    writer.add_image(name, content.detach().cpu().numpy(), iter)
+                    writer.add_scalar(name + '_min', content.min(), iter)
+                    writer.add_scalar(name + '_max', content.max(), iter)
+                elif type == 'figure':
+                    writer.add_figure(name, content, iter, close=True)
+                elif type == 'histogram':
+                    writer.add_histogram(name, content.detach().cpu().numpy(), iter)
+                elif type == 'scalar':
+                    writer.add_scalar(name, content.detach().cpu().numpy(), iter)
+                elif type == 'embedding':
+                    writer.add_embedding(mat=content, global_step=iter)
+
+        if not iter % 50:
+
+            # Segmentation image outputs
+            output_vs_gt_seg = torch.cat((seg_idx.int(), trgt_segs.int()), dim=0)
+            output_vs_gt_seg = util.lin2img(output_vs_gt_seg).int()
+            output_vs_gt_seg = torch.from_numpy(colors[output_vs_gt_seg.cpu().numpy()].squeeze()).permute(0,3,1,2)
+            writer.add_image(prefix + "Output_vs_gt_seg",
+                             torchvision.utils.make_grid(output_vs_gt_seg[:,:3,:,:],
+                                                         scale_each=False,
+                                                         normalize=False).cpu().detach().numpy(),iter)
 
 class SRNsModel(nn.Module):
     def __init__(self,
                  num_instances,
                  latent_dim,
                  tracing_steps,
-                 seg=True):
+                 seg=True,
+                 point_cloud=False):
         super().__init__()
 
         self.latent_dim = latent_dim
         self.seg = seg
+        self.pc = point_cloud
 
         self.colors = np.concatenate([np.array([[1.,1.,1.]]),
                                       cm.rainbow(np.linspace(0, 1, NUM_CLASSES-1))[:,:3]],
@@ -221,7 +287,7 @@ class SRNsModel(nn.Module):
                                                             out_channels=NUM_CLASSES,
                                                             outermost_linear=True,
                                                             use_dropout=False,
-                                                            dropout_prob=0.1,
+                                                            dropout_prob=0.4,
                                                             nf0=64,
                                                             norm=nn.BatchNorm2d,
                                                             max_channels=128,
@@ -421,6 +487,20 @@ class SRNsModel(nn.Module):
         output_seg = util.lin2img(pred)
         output_seg = (self.colors[output_seg.cpu().numpy().astype(int)])[:,0,:,:].transpose(0, 3, 1, 2)
         return output_seg.astype(np.float32)
+
+    def get_output_pc(self, prediction, seg=True):
+        pts = prediction['pts']
+        if seg:
+            seg = prediction['seg']
+            _, seg_pred = torch.max(seg, dim=2)
+            pc = np.concatenate((pts.cpu().numpy(), self.colors[seg_pred.cpu().numpy()]), axis=2)
+        else:
+            rgb = prediction['rgb']
+            rgb += 1.
+            rgb /= 2.
+            rgb *= 2 ** 8 - 1
+            pc = np.concatenate((pts.cpu().numpy(), rgb[:,:,0:1].cpu().numpy(), rgb[:,:,1:2].cpu().numpy() , rgb[:,:,2:3].cpu().numpy()), axis=2)
+        return pc
 
 
     def get_IOU_vals(self, prediction , trgt_seg, confusion, part_intersect, part_union): # had arg confusion
@@ -632,9 +712,12 @@ class SRNsModel(nn.Module):
             class_gen_input = v.permute(0,2,1).view(batch_size, self.num_hidden_units_phi, sidelen, sidelen)
             novel_views_seg = self.class_generator(class_gen_input)
             novel_views_seg = novel_views_seg.view(batch_size, NUM_CLASSES, -1).permute(0,2,1)
-            return {"rgb":novel_views, "seg":novel_views_seg, "depth":depth_maps, "features":v}
+            if self.pc:
+                return {"rgb": novel_views, "seg": novel_views_seg, "depth": depth_maps, "features": v, "pts": points_xyz}
+            else:
+                return {"rgb":novel_views, "seg":novel_views_seg, "depth":depth_maps, "features":v}
         else:
             return {"rgb":novel_views, "depth":depth_maps, "features":v}
 
-        return {'rgb':novel_views, 'seg':novel_views_seg, 'depth':depth_maps}
+        #return {'rgb':novel_views, 'seg':novel_views_seg, 'depth':depth_maps}
 

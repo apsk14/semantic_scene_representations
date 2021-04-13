@@ -5,6 +5,9 @@ from glob import glob
 import data_util
 import util
 
+import imageio
+import cv2
+
 
 def pick(list, item_idcs):
     if not list:
@@ -23,11 +26,13 @@ class SceneInstanceDataset():
                  img_sidelength=None,
                  num_images=-1,
                  part_name2id={},
-                 part_old2new={}):
+                 part_old2new={},
+                 specific_class=0):
 
         self.instance_idx = instance_idx
         self.img_sidelength = img_sidelength
         self.instance_dir = instance_dir
+        self.specific_class= specific_class
 
         #og_dir
 
@@ -71,6 +76,7 @@ class SceneInstanceDataset():
         intrinsics, _, _, world2cam_poses = util.parse_intrinsics(os.path.join(instance_dir, 'intrinsics.txt'),
                                                                   trgt_sidelength=self.img_width)
 
+
         print(instance_dir)
 
     def set_img_sidelength(self, new_img_sidelength):
@@ -94,7 +100,8 @@ class SceneInstanceDataset():
         uv = torch.from_numpy(np.flip(uv, axis=0).copy()).long()
         uv = uv.reshape(2, -1).transpose(1, 0)
 
-        segs = data_util.transfer_labels(self.seg_paths[idx], self.transfer_map, self.img_sidelength)
+        segs = data_util.transfer_labels(self.seg_paths[idx], self.transfer_map, self.img_sidelength, self.specific_class)
+
         segs = segs.reshape(1, -1).transpose(1, 0)
 
         instance_id = self.instance_dir.split('/')[-2]
@@ -122,7 +129,9 @@ class SceneClassDataset(torch.utils.data.Dataset):
                  max_num_instances=-1,
                  max_observations_per_instance=-1,
                  specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
-                 samples_per_instance=1):
+                 samples_per_instance=1,
+                 specific_ins = [],
+                 specific_class = 0):
 
 
         self.samples_per_instance = samples_per_instance
@@ -141,6 +150,25 @@ class SceneClassDataset(torch.utils.data.Dataset):
             self.instance_dirs = self.instance_dirs[:max_num_instances]
             self.stat_dirs = self.stat_dirs[:max_num_instances]
 
+        if specific_ins is not None and len(specific_ins) != 0:
+            print('Using Specific Instances')
+            specific_ins_id = [None] * len(specific_ins)
+            specific_dirs = [None] * len(specific_ins)
+            specific_stat = [None] * len(specific_ins)
+            for idx in range(len(self.instance_dirs)):
+                if self.instance_dirs[idx].split('/')[-2] in specific_ins:
+                    idc = specific_ins.index(self.instance_dirs[idx].split('/')[-2])
+                    specific_ins_id[idc] = idx
+                    specific_dirs[idc] = self.instance_dirs[idx]
+                    specific_stat[idc] = self.stat_dirs[idx]
+            self.instance_dirs = specific_dirs
+            self.stat_dirs = specific_stat
+        else:
+            specific_ins_id = range(0,len(self.instance_dirs))
+
+        #print(self.instance_dirs[50])
+        # exit()
+
 
         seg_level_fn = os.path.join(os.path.dirname(stat_dir), obj_name+'-level-1.txt')
         obj_name = ''.join(e for e in obj_name if e.isalnum())
@@ -151,15 +179,16 @@ class SceneClassDataset(torch.utils.data.Dataset):
         with open(seg_mapping_fn, 'r') as fin:
             part_old2new = {d.rstrip().split()[0]: d.rstrip().split()[1] for d in fin.readlines()}
 
-        self.all_instances = [SceneInstanceDataset(instance_idx=idx,
+        self.all_instances = [SceneInstanceDataset(instance_idx=id,
                                                    instance_dir=dir,
                                                    stat_instance_dir = dir_stat,
                                                    specific_observation_idcs=specific_observation_idcs,
                                                    img_sidelength=img_sidelength,
                                                    num_images=max_observations_per_instance,
                                                    part_name2id=part_name2id,
-                                                   part_old2new=part_old2new)
-                              for idx, (dir, dir_stat) in enumerate(zip(self.instance_dirs, self.stat_dirs))]
+                                                   part_old2new=part_old2new,
+                                                   specific_class=specific_class)
+                              for idx, (dir, dir_stat,id) in enumerate(zip(self.instance_dirs, self.stat_dirs, specific_ins_id))]
 
         self.num_per_instance_observations = [len(obj) for obj in self.all_instances]
         self.num_instances = len(self.all_instances)
@@ -242,5 +271,4 @@ class SceneClassDatasetWithContext(SceneClassDataset):
         collated_context = self.collate_fn([(observations[1:],ground_truth[1:])])[0]
         new_observations.update(collated_context)
 
-        return [new_observations], [ground_truth[1]]
-
+        return [new_observations], [ground_truth[0]]

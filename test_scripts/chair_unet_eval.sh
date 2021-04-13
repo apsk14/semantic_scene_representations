@@ -2,10 +2,10 @@
 
 
 #Train
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 
 python ../test.py \
-    --config_filepath "/home/apsk14/srn_segmentation/test_scripts/config_chairs_test.yml" \
-    --checkpoint_path "/media/data2/apsk14/logging/Chair_unet_30shot/epoch_0499_iter_000500.pth" \
-    --logging_root "/media/data2/apsk14/logging/new_results/Chairs/chair_unet30_multi" \
+    --config_filepath "/home/apsk14/srn-segmentation/test_scripts/config_chairs_test.yml" \
+    --checkpoint_path "/media/data3/apsk14/srn_new_logging/Chair/unet46_multi/checkpoints/epoch_0057_iter_002000.pth" \
+    --logging_root "/media/data3/apsk14/srn_new_results/Chair/chair_unet46_multi" \
     --eval_mode 'unet' \

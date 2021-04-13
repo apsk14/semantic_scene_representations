@@ -211,12 +211,12 @@ def load_transfer_map(path, part_name2id):
     return ins_to_seg
 
 
-def transfer_labels(img_path, ins_to_seg, sidelength):
+def transfer_labels(img_path, ins_to_seg, sidelength, specific_class=0):
     #print(img_path)
     img = load_seg(img_path, sidelength)
     uni, indices = np.unique(img, return_inverse=True)
     for i in np.arange(uni.size):
-        if uni[i] in ins_to_seg.keys():
+        if uni[i] in ins_to_seg.keys() and (ins_to_seg[uni[i]] == specific_class or specific_class == 0):
             uni[i] = ins_to_seg[uni[i]]
         else:
             uni[i] = 0

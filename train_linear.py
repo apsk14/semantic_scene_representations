@@ -29,7 +29,6 @@ p.add_argument('--batch_size_per_img_sidelength', type=str, default="92, 16",
 # Training options
 p.add_argument('--data_root', required=True, help='Path to directory with training data.')
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
-p.add_argument('--val_stat_root', required=False, help='Path to directory with validation data.')
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
 p.add_argument('--stat_root', required=True, help='Path to directory with statistics data.')
@@ -73,6 +72,11 @@ p.add_argument('--start_step', type=int, default=0,
 
 p.add_argument('--specific_observation_idcs', type=str, default=None,
                help='Only pick a subset of specific observations for each instance.')
+
+p.add_argument('--specific_ins', nargs = '+', default=None,
+               help='Only pick a subset of instances.')
+
+p.add_argument('--specific_class', type=int, default=0, help='One versus all training for this specific class')
 
 p.add_argument('--max_num_instances_train', type=int, default=-1,
                help='If \'data_root\' has more instances, only the first max_num_instances_train are used')
@@ -118,7 +122,9 @@ def train():
                                              max_observations_per_instance=opt.max_num_observations_train,
                                              img_sidelength=img_sidelengths[0],
                                              specific_observation_idcs=specific_observation_idcs,
-                                             samples_per_instance=1)
+                                             specific_ins=opt.specific_ins,
+                                             samples_per_instance=1,
+                                             specific_class=opt.specific_class)
 
     assert (len(img_sidelengths) == len(batch_size_per_sidelength)), \
         "Different number of image sidelengths passed than batch sizes."
@@ -129,16 +135,21 @@ def train():
         assert (opt.val_root is not None), "No validation directory passed."
 
         val_dataset = dataio.SceneClassDataset(root_dir=opt.val_root,
-                                               stat_dir=opt.val_stat_root,
+                                               stat_dir=opt.stat_root,
                                                obj_name=opt.obj_name,
                                                max_num_instances=opt.max_num_instances_val,
                                                max_observations_per_instance=opt.max_num_observations_val,
-                                               img_sidelength=opt.img_sidelengths[0],
+                                               img_sidelength=opt.img_sidelength,
                                                samples_per_instance=1)
         collate_fn = val_dataset.collate_fn
-        val_dataset.set_img_sidelength(img_sidelengths[0])
+        val_dataloader = DataLoader(val_dataset,
+                                    batch_size=2,
+                                    shuffle=False,
+                                    drop_last=True,
+                                    collate_fn=val_dataset.collate_fn)
 
-
+    #4489
+    #5660
     model_srn = SRNsModel(num_instances=4489,
                       latent_dim=opt.embedding_size,
                       tracing_steps=opt.tracing_steps)
@@ -147,7 +158,7 @@ def train():
     model_srn.cuda()
 
     if not opt.no_validation:
-        model_srn_val = SRNsModel(num_instances=1214,
+        model_srn_val = SRNsModel(num_instances=val_dataset.num_instances,
                       latent_dim=opt.embedding_size,
                       tracing_steps=opt.tracing_steps)
         model_srn_val.eval()
@@ -192,12 +203,7 @@ def train():
     with open(os.path.join(opt.logging_root, "model.txt"), "w") as out_file:
         out_file.write(str(model_linear))
 
-
-    # dense_parameters = [param for name, param in model.named_parameters() if 'latent_codes' not in name]
-    # sparse_parameters = [param for name, param in model.named_parameters() if 'latent_codes' in name]
-
     optimizer = torch.optim.Adam(model_linear.parameters(), lr=opt.lr)
-    #sparse_optimizer = torch.optim.SparseAdam(sparse_parameters, lr=opt.lr, betas=(0.5, 0.5), eps=1e-5)
 
     writer = SummaryWriter(events_dir)
     iter = opt.start_step
@@ -222,18 +228,13 @@ def train():
                                       collate_fn=train_dataset.collate_fn,
                                       pin_memory=opt.preload)
 
-        val_dataloader = DataLoader(val_dataset,
-                                    batch_size=batch_size,
-                                    shuffle=False,
-                                    drop_last=True,
-                                    collate_fn=val_dataset.collate_fn)
-
         cum_max_steps += max_steps
 
         # Loops over epochs.
         while True:
             for model_input, ground_truth in train_dataloader:
-                model_outputs = model_srn(model_input)
+                with torch.no_grad():
+                    model_outputs = model_srn(model_input)
                 seg_out = model_linear(model_outputs['features'])
 
                 optimizer.zero_grad()
@@ -273,9 +274,11 @@ def train():
                             seg_out = model_linear(model_outputs['features'])
                             class_loss = model_linear.get_seg_loss(seg_out, ground_truth).cpu().numpy()
                             class_losses.append(class_loss)
-                            model_srn.write_updates(writer, model_input, seg_out, iter, prefix='val_')
+                            model_srn_val.write_updates(writer, model_input, seg_out, iter, prefix='val_')
 
-                        writer.add_scalar("val_class_loss", np.mean(class_losses), iter)
+                        writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
+                        writer.add_scalar("val_psnr", np.mean(psnrs), iter)
+                        writer.add_scalar("val_ssim", np.mean(ssims), iter)
                     model_linear.train()
 
                 if iter % opt.steps_til_ckpt == 0:

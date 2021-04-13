@@ -1,0 +1,9 @@
+data_root: /media/staging/srn-segmentation/data/Chair.test # Path to chairs training dataset.
+stat_root: /media/staging/srn-segmentation/data/stats/Chair.test #Path to stats for assigning label data
+logging_root: /media/staging/srn-segmentation/results/chairs_tatarchenko_linear_test_3
+tatarchenko_ckpt: /media/data2/sitzmann/srn-segmentation/chairs_tatarchenko/checkpoints/epoch_0042_iter_075000.pth
+linear_ckpt: /media/data2/sitzmann/srn-segmentation/chairs_tatarchenko_linear/checkpoints/epoch_60000_iter_060000.pth
+obj_name: Chair
+img_sidelength: 128
+batch_size: 128
+num_classes: 6

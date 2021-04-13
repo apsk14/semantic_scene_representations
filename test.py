@@ -18,6 +18,9 @@ p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path
 p.add_argument('--img_sidelength', type=int, default=128, required=False,
                help='Sidelength of test images.')
 
+p.add_argument('--point_cloud', action='store_true', default=False,
+               help='Whether to render out point clouds.')
+
 p.add_argument('--data_root', required=True, help='Path to directory with training data.')
 
 p.add_argument('--stat_root', required=True, help='Path to directory with statistics data.')
@@ -45,6 +48,7 @@ p.add_argument('--linear', action='store_true', default=False,
 p.add_argument('--save_out_first_n', type=int, default=250, help='Only saves images of first n object instances.')
 p.add_argument('--checkpoint_path', default=None, help='Path to trained model.')
 p.add_argument('--linear_path', default=None, help='Path to trained model.')
+p.add_argument('--unet_path', default=None, help='Path to trained model.')
 
 # Model options
 p.add_argument('--num_instances', type=int, required=False,
@@ -75,7 +79,8 @@ def test():
                                        specific_observation_idcs=specific_observation_idcs,
                                        max_observations_per_instance=-1,
                                        samples_per_instance=1,
-                                       img_sidelength=opt.img_sidelength)
+                                       img_sidelength=opt.img_sidelength,
+                                       specific_ins = None)
     dataset = DataLoader(test_set,
                          collate_fn=test_set.collate_fn,
                          batch_size=opt.batch_size,
@@ -89,14 +94,19 @@ def test():
                       tracing_steps=opt.tracing_steps)
 
     elif opt.eval_mode == 'unet':
-        print('Loading UNet....')
-        model = UnetModel()
-
-    elif opt.eval_mode == 'linear':
-        print('Loading Linear....')
+        print('Loading SRN....')
         model = SRNsModel(num_instances=test_set.num_instances,
                           latent_dim=opt.embedding_size,
                           tracing_steps=opt.tracing_steps)
+        print('Loading UNet....')
+        model_unet = UnetModel()
+
+    elif opt.eval_mode == 'linear':
+        print('Loading Linear....')
+        model = SRNsModel(num_instances=1216,   #num_instances=test_set.num_instances
+                          latent_dim=opt.embedding_size,
+                          tracing_steps=opt.tracing_steps,
+                          point_cloud=opt.point_cloud)
 
         model_linear = LinearModel()
 
@@ -120,6 +130,14 @@ def test():
         model_linear.eval()
         model_linear.cuda()
 
+    elif opt.eval_mode == 'unet':
+        print("Loading model from %s" % opt.unet_path)
+        util.custom_load(model_unet, path=opt.unet_path, discriminator=None,
+                         overwrite_embeddings=False)
+
+        model_unet.eval()
+        model_unet.cuda()
+
     # directory structure: month_day/
     #renderings_dir = os.path.join(opt.logging_root, 'renderings')
     util.cond_mkdir(opt.logging_root)
@@ -134,22 +152,29 @@ def test():
         IOU = 0
         mious = list()
         instance_mious = list()
-        part_intersect = np.zeros(NUM_CLASSES, dtype=np.float32)
-        part_union = np.zeros(NUM_CLASSES, dtype=np.float32)
-        confusion = np.zeros((NUM_CLASSES, 3), dtype=int) # TODO: find a way to generalize this
+        part_intersect = np.zeros(opt.num_classes, dtype=np.float32)
+        part_union = np.zeros(opt.num_classes, dtype=np.float32)
+        confusion = np.zeros((opt.num_classes, 3), dtype=int) # TODO: find a way to generalize this
         output_flag = 1
         instance_idx = 0
         idx = 0
         max_classes = 0
         global_dict_data = []
+        main_pc_seg = []
+        main_pc_rgb = []
         global_data_columns = ['instance_num', 'instance_id', 'miou', 'stdiou', 'max_classes']
 
         # psnrs, ssims = list(), list()
         for model_input, ground_truth in dataset:
             if opt.eval_mode == 'linear' or opt.eval_mode == 'srn':
                 model_outputs = model(model_input)
+
             else:
-                prediction = model(util.lin2img(model_input['rgb'].cuda()))
+                #prediction = model(util.lin2img(model_input['rgb'].cuda())) if running unet on GT
+                model_outputs = model(model_input)
+                srn_preds = model.get_output_img(model_outputs).cuda()
+                prediction = model_unet(srn_preds)
+
                 prediction = torch.reshape(prediction, (prediction.shape[0], prediction.shape[1], prediction.shape[2] * prediction.shape[2]))
                 pred_segs = prediction.permute(0, 2, 1)
 
@@ -176,10 +201,14 @@ def test():
                 comparisons = model.get_comparisons(model_input,
                                                     model_outputs,
                                                     ground_truth)
+                if opt.point_cloud:
+                    output_pc_seg = model.get_output_pc(model_outputs, seg=True)
+                    output_pc_rgb = model.get_output_pc(model_outputs, seg=False)
+
             else:
                 output_imgs = trgt_imgs
-                output_segs = model.get_output_seg(pred_segs)
-                comparisons = model.get_comparisons_unet(output_segs, trgt_segs_display)
+                output_segs = model_unet.get_output_seg(pred_segs)
+                comparisons = model_unet.get_comparisons_unet(output_segs, trgt_segs_display)
 
             for i in range(len(output_imgs)):
                 prev_instance_idx = instance_idx
@@ -192,6 +221,16 @@ def test():
                     global_dict_data.append(global_sample)
                     max_classes = 0
                     instance_mious.clear()
+                    if opt.point_cloud:
+                        main_pc_seg = np.concatenate(main_pc_seg)
+                        print(main_pc_seg.shape)
+                        np.savetxt(os.path.join(pc_seg, 'main_pc_seg.txt'), main_pc_seg)
+                        main_pc_seg = []
+
+                        main_pc_rgb = np.concatenate(main_pc_rgb)
+                        print(main_pc_rgb.shape)
+                        np.savetxt(os.path.join(pc_rgb, 'main_pc_rgb.txt'), main_pc_rgb)
+                        main_pc_rgb = []
 
 
                 numclasses = np.unique(trgt_segs.cpu().numpy()).shape[0]
@@ -213,6 +252,9 @@ def test():
                     seg_gt = os.path.join(opt.logging_root,"%06d" % instance_idx, 'seg_gt')
                     input_img = os.path.join(opt.logging_root,"%06d" % instance_idx, 'input')
                     comp = os.path.join(opt.logging_root,"%06d" % instance_idx, 'comparison')
+                    if opt.point_cloud:
+                        pc_seg = os.path.join(opt.logging_root, "%06d" % instance_idx, 'point_cloud_seg')
+                        pc_rgb = os.path.join(opt.logging_root, "%06d" % instance_idx, 'point_cloud_rgb')
 
                     util.cond_mkdir(rgb)
                     util.cond_mkdir(rgb_gt)
@@ -220,6 +262,9 @@ def test():
                     util.cond_mkdir(seg_gt)
                     util.cond_mkdir(input_img)
                     util.cond_mkdir(comp)
+                    util.cond_mkdir(pc_seg)
+                    util.cond_mkdir(pc_rgb)
+
 
                     rgb_out = util.convert_image(output_imgs[i].squeeze())
                     seg_out = util.convert_image(output_segs[i].squeeze())
@@ -227,7 +272,20 @@ def test():
                     seg_gt_out = util.convert_image(trgt_segs_display[i].squeeze())
                     comp_out = util.convert_image(comparisons[i].squeeze())
 
-                    if idx == 102:
+                    if opt.point_cloud:
+                        pc_out_seg = output_pc_seg[i, :, :]
+                        pc_out_rgb = output_pc_rgb[i, :, :]
+                        background = pc_out_seg[:, 3:] == [1., 1., 1.]
+                        pc_out_rgb = pc_out_rgb[np.where(background == False)[0]]
+                        pc_out_seg = pc_out_seg[np.where(background == False)[0]]
+                        #pc_out_rgb = pc_out_rgb[:,0:6] #get rid of alpha channel
+                        #np.savetxt(os.path.join(pc_seg, "%06d.txt" % idx), pc_out_seg)
+                        #np.savetxt(os.path.join(pc_rgb, "%06d.txt" % idx), pc_out_rgb)
+                        if idx % 25 == 0:
+                            main_pc_seg += [pc_out_seg]
+                            main_pc_rgb += [pc_out_rgb]
+
+                    if idx == 65:
                         input_out = util.convert_image(trgt_imgs[i].squeeze())
                         util.write_img(input_out, os.path.join(input_img, "%06d.png" % idx))
                     util.write_img(rgb_out, os.path.join(rgb, "%06d.png" % idx))
@@ -236,7 +294,15 @@ def test():
                     util.write_img(seg_gt_out, os.path.join(seg_gt, "%06d.png" % idx))
                     util.write_img(comp_out, os.path.join(comp, "%06d.png" % idx))
 
+
                 idx += 1
+
+    if opt.point_cloud:
+        main_pc_seg = np.concatenate(main_pc_seg)
+        main_pc_rgb = np.concatenate(main_pc_rgb)
+        print(main_pc_rgb.shape)
+        np.savetxt(os.path.join(pc_seg, 'main_pc_seg.txt'), main_pc_seg)
+        np.savetxt(os.path.join(pc_rgb, 'main_pc_rgb.txt'), main_pc_rgb)
     global_sample = {'instance_num': instance_idx.cpu().numpy(), 'instance_id': model_input['instance_id'][i],
                      'miou': np.mean(instance_mious), 'stdiou': np.std(instance_mious), 'max_classes': max_classes}
     global_dict_data.append(global_sample)

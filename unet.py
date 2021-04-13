@@ -20,8 +20,8 @@ import hyperlayers
 import matplotlib.cm as cm
 
 #NUM_CLASSES = 18 # LAMPS
-#NUM_CLASSES = 6 # Chairs
-NUM_CLASSES = 11 # Tables
+NUM_CLASSES = 6 # Chairs
+#NUM_CLASSES = 11 # Tables
 
 class SRNsModel(nn.Module):
     def __init__(self,
@@ -65,7 +65,7 @@ class SRNsModel(nn.Module):
                                                         out_channels=NUM_CLASSES,
                                                         outermost_linear=True,
                                                         use_dropout=False,
-                                                        dropout_prob=0.1,
+                                                        dropout_prob=0.2,
                                                         nf0=64,
                                                         norm=nn.BatchNorm2d,
                                                         max_channels=128,
@@ -151,7 +151,7 @@ class UnetModel(nn.Module):
             max_channels=512,
             use_dropout=True,
             upsampling_mode='transpose',
-            dropout_prob=0.4,
+            dropout_prob=0.1,
             norm=nn.BatchNorm2d,
             outermost_linear=True)
 

@@ -76,7 +76,6 @@ class LinearModel(nn.Module):
 
         trgt_segs = ground_truth['seg']
         trgt_segs = trgt_segs.permute(0, 2, 1).squeeze().long().cuda()
-
         loss = self.cross_entropy_loss(pred_segs, trgt_segs)
         return loss
 

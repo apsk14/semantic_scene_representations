@@ -153,6 +153,8 @@ def custom_load_linear(model, path, discriminator=None, overwrite_embeddings=Fal
     if overwrite_embeddings:
         for name, param in model.named_parameters():
             if name == 'linear.weight' or name == 'linear.bias':
+                print(name)
+                exit()
                 param.requires_grad = True
             else:
                 param.requires_grad = False

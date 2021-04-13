@@ -23,9 +23,9 @@ python ../train_linear.py \
     --max_num_instances_train 10 \
     --l1_weight=0. \
     --overwrite_embeddings \
-    --checkpoint_path "/media/data2/sitzmann/srn-segmentation/chairs_train_vanilla_continued/checkpoints/epoch_0005_iter_105000.pth" \
-    --linear_path "/media/data2/sitzmann/srn-segmentation/Chairs_linear/checkpoints/epoch_2000_iter_020000.pth" \
-    --specific_observation_idcs 102 \
+    --checkpoint_path "/media/data3/apsk14/srn_new_logging/Chair/train_vanilla/checkpoints/epoch_0010_iter_105000.pth" \
+    --linear_path "/media/data3/apsk14/srn_new_logging/Chair/linear_single/checkpoints/epoch_10000_iter_020000.pth" \
+    --specific_observation_idcs 65 \
 
 #python ../run_srn_linear.py --train_test train \
 #                      --data_root /home/apsk14/data/final_data/Chair/Chair.train/ \

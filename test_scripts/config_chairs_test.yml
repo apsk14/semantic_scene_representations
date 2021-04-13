@@ -1,6 +1,7 @@
-data_root: /home/apsk14//data/final_data/Chair/Chair.test # Path to chairs training dataset.
+data_root: /home/apsk14/data/final_data/Chair/Chair.test
 stat_root: /media/data1/apsk14/srn_seg_data/Chair/Chair.test
 img_sidelength: 128
 num_classes: 6
 obj_name: Chair
-batch_size: 128
+batch_size: 1
+
