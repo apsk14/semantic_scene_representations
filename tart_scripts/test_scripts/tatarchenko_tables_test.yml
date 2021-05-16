@@ -1,9 +1,0 @@
-data_root: /media/data2/apsk14/srn_rendered_data/Table/Table.test # Path to chairs training dataset.
-stat_root: /media/data2/apsk14/srn_model_data/Table/Table.test #Path to stats for assigning label data
-logging_root: /media/data2/sitzmann/srn-segmentation/tables_tatarchenko_linear_test
-tatarchenko_ckpt: /media/data2/sitzmann/srn-segmentation/tables_tatarchenko/checkpoints/epoch_0027_iter_060000.pth
-linear_ckpt: /media/data2/sitzmann/srn-segmentation/tables_tatarchenko_linear/checkpoints/epoch_55000_iter_055000.pth
-obj_name: Table
-img_sidelength: 128
-batch_size: 128
-num_classes: 11

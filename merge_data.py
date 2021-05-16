@@ -1,33 +1,46 @@
-from pytorch_prototyping import pytorch_prototyping
-# import configargparse
-# import os, time, datetime
-#
-# import torch
-# from torch.utils.tensorboard import SummaryWriter
-# import numpy as np
-#
-# import class_dataio as dataio
-# from torch.utils.data import DataLoader
-# #from srns_vincent import *
-# import util
+import os
+import torch
+import numpy as np
+from glob import glob
+import data_util
+import util
+
+import imageio
+import cv2
 import pdb
+import shutil
 
 
 
 def main():
-    data_root = '/home/apsk14/data/final_data/Chair/Chair.train'
-    stat_root = '/media/data1/apsk14/srn_seg_data/Chair/ Chair.train'
 
-    instance_dirs = sorted(glob(os.path.join(root_dir, "*/")))
-    for i in range(len(self.instance_dirs)):
-        self.stat_dirs.append(os.path.join(stat_dir, self.instance_dirs[i].split('/')[-2] + '/', ))
-        assert (self.instance_dirs[i].split('/')[-2] == self.stat_dirs[i].split('/')[-2]), "Misaligned!" + \
-                                                                                           self.instance_dirs[i].split(
-                                                                                               '/')[-2] + 'vs' + \
-                                                                                           self.stat_dirs[i].split('/')[
-                                                                                               -2]
+    splits = ['Chair.train', 'Chair.val', 'Chair.test', 'Table.train', 'Table.val', 'Table.test']
+    base_root_dir = '/home/apsk14/data/final_data/'
+    base_stat_dir = '/media/data1/apsk14/srn_seg_data/'
+    for sp in splits:
+        print(sp)
+        root_dir = base_root_dir + sp.split('.')[0] + '/' + sp
+        stat_dir = base_stat_dir + sp.split('.')[0] + '/' + sp
 
-    pdb.set_trace()
+        stat_dirs = list()
+        instance_dirs = sorted(glob(os.path.join(root_dir, "*/")))
+        for i in range(len(instance_dirs)):
+            stat_dirs.append(os.path.join(stat_dir, instance_dirs[i].split('/')[-2] + '/', ))
+            assert (instance_dirs[i].split('/')[-2] == stat_dirs[i].split('/')[-2]), "Misaligned!" + \
+                                                                                               instance_dirs[i].split(
+                                                                                                   '/')[-2] + 'vs' + \
+                                                                                               stat_dirs[i].split('/')[
+                                                                                                   -2]
+
+        for i in range(len(instance_dirs)):
+            pn_dir = os.path.join(stat_dirs[i], 'partnet')
+            transfer_path = os.path.join(pn_dir, 'point_sample', 'sample-points-all-label-10000.txt')
+            util.cond_mkdir(os.path.join(instance_dirs[i], 'point_cloud'))
+            desired_path = os.path.join(instance_dirs[i], 'point_cloud','sample-points-all-label-10000.txt')
+            print(stat_dirs[i].split('/')[-2])
+            print(instance_dirs[i].split('/')[-2] + '\n')
+            shutil.copy(transfer_path, desired_path)
+
 
 if __name__ == '__main__':
     main()
