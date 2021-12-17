@@ -3,7 +3,7 @@ Official Pytorch implementation of Semantic Implicit Neural Scene Representation
 
 # Scene Representation Networks
 
-[![Paper](http://https://img.shields.io/badge/paper-%09arXiv%3A2003.12673-yellow.svg)](https://arxiv.org/abs/2003.12673)
+[![Paper](https://img.shields.io/badge/paper-%09arXiv%3A2003.12673-yellow.svg)](https://arxiv.org/abs/2003.12673)
 [![Conference](https://img.shields.io/badge/3DV-2020-blue.svg)](http://3dv2020.dgcv.nii.ac.jp/)
 
 This is the official implementation of the NeurIPS submission "Scene Representation Networks: 
