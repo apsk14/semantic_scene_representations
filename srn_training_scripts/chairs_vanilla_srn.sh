@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-CUDA_VISIBLE_DEVICES=9 python ../train.py  \
---data_root /home/apsk14/data/final_data/Chair/Chair.train  \
---stat_root /media/data1/apsk14/srn_seg_data/Chair/Chair.train \
+CUDA_VISIBLE_DEVICES=1 python ../train.py  \
+--data_root /media/hugespace/amit/semantic_srn_data/Chair.train \
 --obj_name 'Chair' \
---logging_root /media/data3/apsk14/srn_new_logging/Chair/train_vanilla \
+--logging_root /media/hugespace/amit/srn_new_logging/Chair/train_vanilla \
+--max_num_instances 50 \
 --class_weight=0. --no_validation
+

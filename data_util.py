@@ -58,8 +58,18 @@ def load_rgb(path, sidelength=None):
 
     return img
 
-
 def load_seg(path, sidelength=None):
+    img = np.load(path)
+
+    img = square_crop_img(img)
+    if sidelength is not None:
+        img = cv2.resize(img, (sidelength, sidelength), interpolation=cv2.INTER_NEAREST)
+
+
+    return img
+
+
+#def load_seg(path, sidelength=None):
     img = imageio.imread(path)[:,:,:]
 
     img = square_crop_img(img)
@@ -311,7 +321,7 @@ def load_params(filename):
 
 def glob_imgs(path):
     imgs = []
-    for ext in ['*.png', '*.jpg', '*.JPEG', '*.JPG']:
+    for ext in ['*.png', '*.jpg', '*.JPEG', '*.JPG', '*.npy']:
         imgs.extend(glob(os.path.join(path, ext)))
     return imgs
 
