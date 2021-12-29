@@ -6,15 +6,11 @@ Official Pytorch implementation of Semantic Implicit Neural Scene Representation
 [![Paper](https://img.shields.io/badge/paper-%09arXiv%3A2003.12673-yellow.svg)](https://arxiv.org/abs/2003.12673)
 [![Conference](https://img.shields.io/badge/3DV-2020-blue.svg)](http://3dv2020.dgcv.nii.ac.jp/)
 
-This is the official implementation of the NeurIPS submission "Scene Representation Networks: 
-Continuous 3D-Structure-Aware Neural Scene Representations"
+This is the official implementation of the 3DV 2020 submission "Semantic Implicit Neural Scene Representations With Semi Supervised Training"
 
-Scene Representation Networks (SRNs) are a continuous, 3D-structure-aware scene representation that encodes both geometry and appearance. 
-SRNs represent scenes as continuous functions that map world coordinates to a feature representation of local scene properties. 
-By formulating the image formation as a neural, 3D-aware rendering algorithm, SRNs can be trained end-to-end from only 2D observations, 
-without access to depth or geometry. SRNs do not discretize space, smoothly parameterizing scene surfaces, and their 
-memory complexity does not scale directly with scene resolution. This formulation naturally generalizes across scenes, 
-learning powerful geometry and appearance priors in the process.
+We take the next step and demonstrate that an existing implicit representation (SRNs) is actually multi-modal; it can be further leveraged to perform per-point semantic segmentation while retaining its ability to represent appearance and geometry. To achieve this multi-modal behavior, we utilize a semi-supervised learning strategy atop the existing pre-trained scene representation. Our method is simple, general, and only requires a few tens of labeled 2D segmentation masks in order to achieve dense 3D semantic segmentation. We explore two novel applications for this semantically aware implicit neural scene representation: 3D novel view and semantic label synthesis given only a single input RGB image or 2D label mask, as well as 3D interpolation of appearance and semantics.
+
+We take the next step and demonstrate that an existing implicit representation (SRNs) is actually multi-modal; it can be further leveraged to perform per-point semantic segmentation while retaining its ability to represent appearance and geometry. To achieve this multi-modal behavior, we utilize a semi-supervised learning strategy atop the existing pre-trained scene representation. Our method is simple, general, and only requires a few tens of labeled 2D segmentation masks in order to achieve dense 3D semantic segmentation. We explore two novel applications for this semantically aware implicit neural scene representation: 3D novel view and semantic label synthesis given only a single input RGB image or 2D label mask, as well as 3D interpolation of appearance and semantics.
 
 [![srns_video](https://img.youtube.com/vi/6vMEBWD8O20/0.jpg)](https://youtu.be/6vMEBWD8O20f)
 
