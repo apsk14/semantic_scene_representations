@@ -12,7 +12,7 @@ Existing implicit representations for appearance and geometry of 3D scenes---suc
 
 In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the SRNS repository () offers a comprehensive overview of the first step.
 
-[![video](https://img.youtube.com/vi/iVubC_ymE5w/3.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
+[![video](https://img.youtube.com/vi/iVubC_ymE5w/0.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
 ## Usage
 ### Installation
