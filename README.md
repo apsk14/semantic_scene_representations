@@ -7,7 +7,7 @@ This is the official implementation of the 3DV 2020 submission "Semantic Implici
 
 Existing implicit representations for appearance and geometry of 3D scenes---such as Scene Representations Networks (SRNs)---can be updated to also perform semantic segmentation with only a few training examples. The resulting semantic scene representations offer a continuous, multimodal representation of a 3D scene which may find use in downstream applications such as robotics.
 
-In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the SRNS repository (https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step.
+In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the [SRNS repository](https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step.
 
 [![video](https://img.youtube.com/vi/iVubC_ymE5w/0.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
@@ -60,16 +60,16 @@ Alternatively one can simply run setup.sh in the desired location for the datase
 
 Obtaining a semantic scene representation requires 4 main steps.
 
-* 1) Training a vanilla SRN (Training)
+1) Training a vanilla SRN (Training)
 Please refer to the original SRNS repository for this step. See training_scripts/vanilla_srn.sh for an example call.
 
-* 2) Updating SRN for semantic segmentation (Training)
+2) Updating SRN for semantic segmentation (Training)
 In this step the features of a pretrained SRN are linearly regressed to semantic labels---the goal being to learn the regression coefficents. An example call for this step is found in seg_scripts/linear_update.sh.
 
-* 3) Learning latent codes from test time observations (Testing)
+3) Learning latent codes from test time observations (Testing)
 In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. An example call is found in test_scripts/single_shot.sh
 
-* 4) Rendering results from the learned semantic SRN
+4) Rendering results from the learned semantic SRN
 Finally, with an SRN in hand for each test object, this final step produces samples of the semantic SRN in the form of rgb images an point clouds as well as their corresponding semantic segmentation maps and point clouds. An example call is found in result_scripts/single_shot.sh
 
 
