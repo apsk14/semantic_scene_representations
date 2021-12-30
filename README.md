@@ -8,11 +8,11 @@ Official Pytorch implementation of Semantic Implicit Neural Scene Representation
 
 This is the official implementation of the 3DV 2020 submission "Semantic Implicit Neural Scene Representations With Semi Supervised Training"
 
-We take the next step and demonstrate that an existing implicit representation (SRNs) is actually multi-modal; it can be further leveraged to perform per-point semantic segmentation while retaining its ability to represent appearance and geometry. To achieve this multi-modal behavior, we utilize a semi-supervised learning strategy atop the existing pre-trained scene representation. Our method is simple, general, and only requires a few tens of labeled 2D segmentation masks in order to achieve dense 3D semantic segmentation. We explore two novel applications for this semantically aware implicit neural scene representation: 3D novel view and semantic label synthesis given only a single input RGB image or 2D label mask, as well as 3D interpolation of appearance and semantics.
+Existing implicit representations for appearance and geometry of 3D scenes---such as Scene Representations Networks (SRNs)---can be updated to also perform semantic segmentation with only a few training examples. The resulting semantic scene representations offer a continous, multimodal representation of a 3D scene which may find use in downstream applications such as robotics.
 
-We take the next step and demonstrate that an existing implicit representation (SRNs) is actually multi-modal; it can be further leveraged to perform per-point semantic segmentation while retaining its ability to represent appearance and geometry. To achieve this multi-modal behavior, we utilize a semi-supervised learning strategy atop the existing pre-trained scene representation. Our method is simple, general, and only requires a few tens of labeled 2D segmentation masks in order to achieve dense 3D semantic segmentation. We explore two novel applications for this semantically aware implicit neural scene representation: 3D novel view and semantic label synthesis given only a single input RGB image or 2D label mask, as well as 3D interpolation of appearance and semantics.
+In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the SRNS repository () offers a comprehensive overview of the first step.
 
-[![srns_video](https://img.youtube.com/vi/6vMEBWD8O20/0.jpg)](https://youtu.be/6vMEBWD8O20f)
+[![video]](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
 ## Usage
 ### Installation
