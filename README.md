@@ -37,17 +37,6 @@ The code is organized as follows:
 * geometry.py contains utility functions for 3D and projective geometry.
 * util.py contains misc utility functions.
 
-### Pre-Trained models
-There are pre-trained models for the shapenet car and chair datasets available, including tensorboard event files of the
-full training process. 
-
-Please download them [here](https://drive.google.com/open?id=1IdOywOSLuK6WlkO5_h-ykr3ubeY9eDig).
-
-The checkpoint is in the "checkpoints" directory - to load weights from the checkpoint, simply pass the full path to the checkpoint
-to the "--checkpoint_path" command-line argument. 
-
-To inspect the progress of how I trained these models, run tensorboard in the "events" subdirectory. 
-
 ### Data
 The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/).
 
@@ -109,13 +98,11 @@ python test.py --config_filepath test_configs/cars_training_set_novel_view.yml
 ### Citation
 If you find our work useful in your research, please cite:
 ```
-@inproceedings{sitzmann2019srns,
-	author = {Sitzmann, Vincent 
-	          and Zollh{\"o}fer, Michael
-	          and Wetzstein, Gordon},
-	title = {Scene Representation Networks: Continuous 3D-Structure-Aware Neural Scene Representations},
-	booktitle = {Advances in Neural Information Processing Systems},
-	year={2019}
+@inproceedings{semantic_srn,
+	author = {A. Kohli and V. Sitzmann and G. Wetzstein},
+	title = {{Semantic Implicit Neural Scene Representations with Semi-supervised Training}},
+	booktitle = {International Conference on 3D Vision (3DV)},
+	year = {2020},
 }
 ```
 
@@ -124,4 +111,4 @@ The code in the subdirectory "pytorch_prototyping" comes from a library of custo
 research projects. You can find it [here](https://github.com/vsitzmann/pytorch_prototyping).
 
 ### Contact
-If you have any questions, please email Vincent Sitzmann at sitzmann@cs.stanford.edu.
+If you have any questions, please email Amit Kohli at apkohli@berkeley.edu.
