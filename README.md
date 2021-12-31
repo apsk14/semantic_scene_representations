@@ -1,26 +1,19 @@
-# semantic_scene_representations
-Official Pytorch implementation of Semantic Implicit Neural Scene Representations with Semi-Supervised Training
-
-# Scene Representation Networks
+# Semantic Implicit Neural Scene Representations With Semi-Supervised Training
 
 [![Paper](https://img.shields.io/badge/paper-%09arXiv%3A2003.12673-yellow.svg)](https://arxiv.org/abs/2003.12673)
 [![Conference](https://img.shields.io/badge/3DV-2020-blue.svg)](http://3dv2020.dgcv.nii.ac.jp/)
 
-This is the official implementation of the NeurIPS submission "Scene Representation Networks: 
-Continuous 3D-Structure-Aware Neural Scene Representations"
+This is the official implementation of the 3DV 2020 submission "Semantic Implicit Neural Scene Representations With Semi Supervised Training"
 
-Scene Representation Networks (SRNs) are a continuous, 3D-structure-aware scene representation that encodes both geometry and appearance. 
-SRNs represent scenes as continuous functions that map world coordinates to a feature representation of local scene properties. 
-By formulating the image formation as a neural, 3D-aware rendering algorithm, SRNs can be trained end-to-end from only 2D observations, 
-without access to depth or geometry. SRNs do not discretize space, smoothly parameterizing scene surfaces, and their 
-memory complexity does not scale directly with scene resolution. This formulation naturally generalizes across scenes, 
-learning powerful geometry and appearance priors in the process.
+Existing implicit representations for appearance and geometry of 3D scenes&mdash;such as Scene Representations Networks (SRNs)&mdash;can be updated to also perform semantic segmentation with only a few training examples. The resulting semantic scene representations offer a continuous, multimodal representation of a 3D scene which may find use in downstream applications such as robotics.
 
-[![srns_video](https://img.youtube.com/vi/6vMEBWD8O20/0.jpg)](https://youtu.be/6vMEBWD8O20f)
+In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the [SRNS repository](https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step.
+
+[![video](https://img.youtube.com/vi/iVubC_ymE5w/0.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
 ## Usage
 ### Installation
-This code was tested with python 3.7 and pytorch 1.2. I recommend using anaconda for dependency management. 
+This code was tested with python 3.7.8 and pytorch 1.8.1 I recommend using anaconda for dependency management. 
 You can create an environment with name "srns" with all dependencies like so:
 ```
 conda env create -f environment.yml
@@ -56,31 +49,31 @@ to the "--checkpoint_path" command-line argument.
 To inspect the progress of how I trained these models, run tensorboard in the "events" subdirectory. 
 
 ### Data
-Four different datasets appear in the paper:
-* Shapenet v2 chairs and car classes.
-* Shepard-Metzler objects.
-* Bazel face dataset.
+The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/).
 
-Please download the datasets [here](https://drive.google.com/drive/folders/1OkYgeRcIcLOFu1ft5mRODWNQaPJ0ps90?usp=sharing).
+The dataset along with pretrained models are stored [here](https://drive.google.com/drive/folders/1OkYgeRcIcLOFu1ft5mRODWNQaPJ0ps90?usp=sharing). Information for the dataset can be found at [semantic_scenes_dataset](https://github.com/apsk14/semantic_scenes_dataset)
 
-### Rendering your own datasets
-I have put together a few scripts for the Blender python interface that make it easy to render your own dataset. Please find them [here](https://github.com/vsitzmann/shapenet_renderer/blob/master/shapenet_spherical_renderer.py).
+Alternatively one can simply run setup.sh in the desired location for the dataset to download it. Be wary, the dataset is fairly large (~46GB).
 
-### Coordinate and camera parameter conventions
-This code uses an "OpenCV" style camera coordinate system, where the Y-axis points downwards (the up-vector points in the negative Y-direction), 
-the X-axis points right, and the Z-axis points into the image plane. Camera poses are assumed to be in a "camera2world" format,
-i.e., they denote the matrix transform that transforms camera coordinates to world coordinates.
-
-The code also reads an "intrinsics.txt" file from the dataset directory. This file is expected to be structured as follows (unnamed constants are unused):
-```
-f cx cy 0.
-0. 0. 0.
-1.
-img_height img_width
-```
-The focal length, cx and cy are in pixels. Height and width are the resolution of the image.
 
 ### Training
+
+Obtaining a semantic scene representation requires 4 main steps.
+
+1) Training a vanilla SRN (Training)
+Please refer to the original SRNS repository for this step. See training_scripts/vanilla_srn.sh for an example call.
+
+2) Updating SRN for semantic segmentation (Training)
+In this step the features of a pretrained SRN are linearly regressed to semantic labels---the goal being to learn the regression coefficents. An example call for this step is found in seg_scripts/linear_update.sh.
+
+3) Learning latent codes from test time observations (Testing)
+In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. An example call is found in test_scripts/single_shot.sh
+
+4) Rendering results from the learned semantic SRN
+Finally, with an SRN in hand for each test object, this final step produces samples of the semantic SRN in the form of rgb images an point clouds as well as their corresponding semantic segmentation maps and point clouds. An example call is found in result_scripts/single_shot.sh
+
+
+
 See `python train.py --help` for all train options. 
 Example train call:
 ```
