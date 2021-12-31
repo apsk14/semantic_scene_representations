@@ -51,8 +51,7 @@ class SceneInstanceDataset():
         self.pose_paths = sorted(glob(os.path.join(pose_dir, "*.txt")))
 
         self.pts_path = os.path.join(instance_dir, 'point_cloud', 'sample-points-all-pts-nor-rgba-10000.txt')
-        self.labels_path = os.path.join(instance_dir, 'point_cloud', 'sample-points-all-label-10000.txt')
-        self.labels_path_new = os.path.join(instance_dir, 'point_cloud', 'sample-points-label-10000.txt')
+        self.labels_path = os.path.join(instance_dir, 'point_cloud', 'sample-points-label-10000.txt')
         self.mapping_path = os.path.join(instance_dir, 'result.json')
         self.transfer_path = os.path.join(instance_dir, 'result_after_merging.json')
 
@@ -66,11 +65,11 @@ class SceneInstanceDataset():
             self.pose_paths = pick(self.pose_paths, idcs)
             self.seg_paths = pick(self.seg_paths, idcs)
 
-        self.transfer_map = data_util.load_transfer_map(self.transfer_path, part_name2id)
+        #self.transfer_map = data_util.load_transfer_map(self.transfer_path, part_name2id)
         self.pts, self.rgb_pts = data_util.load_pts(self.pts_path)
 
-        label_map = data_util.load_label_map(self.mapping_path)
-        #self.labels = data_util.load_label(self.labels_path, label_map, part_name2id, part_old2new)
+        #label_map = data_util.load_label_map(self.mapping_path)
+        self.labels = data_util.load_labels(self.labels_path)
 
         test_rgb = data_util.load_rgb(self.color_paths[0])
         self.img_width, self.img_height = test_rgb.shape[1], test_rgb.shape[2]
@@ -133,10 +132,12 @@ class SceneInstanceDataset():
             "pose": torch.from_numpy(pose).float(),
             "uv": uv,
             "seg": torch.from_numpy(segs).int(),
+            "pts": torch.from_numpy(self.pts),
+            "rgb_pts": torch.from_numpy(self.rgb_pts),
+            "labels": torch.from_numpy(self.labels), 
             "intrinsics": intrinsics,
             "instance_id": instance_id
         }
-        pdb.set_trace()
         return sample
 
 

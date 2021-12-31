@@ -5,7 +5,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-import class_dataio as dataio
+import new_dataset as dataio
 from torch.utils.data import DataLoader
 from srns_vincent import *
 import util
@@ -31,7 +31,6 @@ p.add_argument('--data_root', required=True, help='Path to directory with traini
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
-p.add_argument('--stat_root', required=True, help='Path to directory with statistics data.')
 p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
 
 p.add_argument('--lr', type=float, default=4e-4, help='learning rate. default=4e-4')
@@ -104,7 +103,6 @@ def train():
     max_steps_per_sidelength = util.parse_comma_separated_integers(opt.max_steps_per_img_sidelength)
 
     train_dataset = dataio.SceneClassDataset(root_dir=opt.data_root,
-                                             stat_dir=opt.stat_root,
                                              obj_name=opt.obj_name,
                                              max_num_instances=opt.max_num_instances_train,
                                              max_observations_per_instance=opt.max_num_observations_train,
@@ -121,7 +119,6 @@ def train():
         assert (opt.val_root is not None), "No validation directory passed."
 
         val_dataset = dataio.SceneClassDataset(root_dir=opt.val_root,
-                                               stat_dir=opt.stat_root,
                                                obj_name=opt.obj_name,
                                                max_num_instances=opt.max_num_instances_val,
                                                max_observations_per_instance=opt.max_num_observations_val,
@@ -212,11 +209,6 @@ def train():
                 weighted_latent_loss = opt.kl_weight * latent_loss
                 weighted_class_loss = opt.class_weight * class_loss
 
-                #if opt.overwrite_embeddings:
-                total_loss = (weighted_dist_loss
-                                  + weighted_reg_loss
-                                  + weighted_latent_loss)
-                #else:
                 total_loss = (weighted_dist_loss
                               + weighted_class_loss
                               + weighted_reg_loss
@@ -229,7 +221,8 @@ def train():
                       (iter, epoch, weighted_dist_loss, weighted_class_loss,
                        weighted_latent_loss, weighted_reg_loss))
 
-                model.write_updates(writer, model_input, model_outputs, iter)
+                with torch.no_grad():
+                    model.write_updates(writer, model_input, model_outputs, iter)
                 writer.add_scalar("scaled_class_loss", weighted_class_loss, iter)
                 writer.add_scalar("scaled_distortion_loss", weighted_dist_loss, iter)
                 writer.add_scalar("scaled_regularization_loss", weighted_reg_loss, iter)
@@ -280,7 +273,7 @@ def train():
     util.custom_save(model,
                      os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
                      discriminator=None,
-                     optimizer=optimizer)
+                     optimizer=[sparse_optimizer, dense_optimizer])
 
 
 def main():

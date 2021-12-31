@@ -125,13 +125,6 @@ def load_depth(path, sidelength=None):
     return img
 
 
-# def load_pts(path):
-#     with open(path, 'r') as fin:
-#         lines = [item.rstrip() for item in fin]
-#         pts = np.array([[float(line.split()[0]), float(line.split()[1]), float(line.split()[2])] for line in lines],
-#                        dtype=np.float32)
-#         return pts
-
 
 def load_pts(path):
     with open(path, 'r') as fin:
@@ -144,94 +137,15 @@ def load_pts(path):
         rgb = (rgb/float(255))
 
         return pts, rgb
-    
-    
-def load_label(path, lmap, part_name2id, part_old2new):
-    #global ins_to_seg
-    #ins_to_seg = dict()
+
+def load_labels(path):
     with open(path, 'r') as fin:
-        label = np.zeros((10000), dtype=np.int)
-        for i, item in enumerate(fin.readlines()):
-            l = int(item.rstrip())
-            assert str(l) in lmap.keys()
-            old_name = lmap[str(l)]
-            while old_name not in part_old2new.keys():
-                old_name = '/'.join(old_name.split('/')[:-1])
-            new_name = part_old2new[old_name]
-            while len(new_name) > 0:
-                if new_name in part_name2id.keys():
-                    label[i] = int(part_name2id[new_name])
-                    #ins_to_seg[int(l)] = int(part_name2id[new_name])
-                new_name = '/'.join(new_name.split('/')[:-1])
-        return label
-    
+        lines = [item.rstrip() for item in fin]
 
-def load_label_map(path):
-    global label_map
-    label_map = {}
-    label_map = dict()
+        labels = np.array([[float(line.split()[0])] for line in lines],
+                       dtype=np.float32)
 
-    def traverse(node, code):
-        global label_map
-        if code == '':
-            cur_code = node['name']
-        else:
-            cur_code = code + '/' + node['name']
-        if 'children' in node.keys():
-            for item in node['children']:
-                traverse(item, cur_code)
-        elif 'objs' in node.keys() and len(node['objs']) > 0:
-            label_map[str(node['id'])] = cur_code
-
-    with open(path, 'r') as fin:
-        data = json.load(fin)[0]
-        traverse(data, '')
-    return label_map
-
-
-def load_transfer_map(path, part_name2id):
-    global ins_to_seg
-    ins_to_seg = {}
-    ins_to_seg = dict()
-
-    def traverse(node, code):
-        global ins_to_seg
-        if code == '':
-            cur_code = node['name']
-        else:
-            cur_code = code + '/' + node['name']
-
-        if 'objs' in node.keys() and len(node['objs']) > 0:
-            temp_code = cur_code
-            while len(temp_code) > 0:
-                if temp_code in part_name2id.keys():
-                    ins_to_seg[node['id']] = part_name2id[temp_code]
-                    break
-                temp_code = os.path.split(temp_code)[0]
-            if len(temp_code) == 0:
-                ins_to_seg[node['id']] = 0
-
-        if 'children' in node.keys():
-            for item in node['children']:
-                traverse(item, cur_code)
-
-    with open(path, 'r') as fin:
-        data = json.load(fin)[0]
-        traverse(data, '')
-    return ins_to_seg
-
-
-def transfer_labels(img_path, ins_to_seg, sidelength, specific_class=0):
-    #print(img_path)
-    img = load_seg(img_path, sidelength)
-    uni, indices = np.unique(img, return_inverse=True)
-    for i in np.arange(uni.size):
-        if uni[i] in ins_to_seg.keys() and (ins_to_seg[uni[i]] == specific_class or specific_class == 0):
-            uni[i] = ins_to_seg[uni[i]]
-        else:
-            uni[i] = 0
-    swapped_im = uni[indices].reshape(img.shape)
-    return swapped_im
+        return labels
 
 
 def cond_mkdir(path):

@@ -1,11 +1,12 @@
 import configargparse
 import os, time, datetime
+import pdb
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-import class_dataio as dataio
+import new_dataset as dataio
 from torch.utils.data import DataLoader
 from linear import *
 import util
@@ -31,7 +32,6 @@ p.add_argument('--data_root', required=True, help='Path to directory with traini
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
-p.add_argument('--stat_root', required=True, help='Path to directory with statistics data.')
 p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
 p.add_argument('--num_classes', type=int, default=6,
                help='number of seg classes for the given object')
@@ -116,7 +116,6 @@ def train():
     max_steps_per_sidelength = util.parse_comma_separated_integers(opt.max_steps_per_img_sidelength)
 
     train_dataset = dataio.SceneClassDataset(root_dir=opt.data_root,
-                                             stat_dir=opt.stat_root,
                                              obj_name=opt.obj_name,
                                              max_num_instances=opt.max_num_instances_train,
                                              max_observations_per_instance=opt.max_num_observations_train,
@@ -135,7 +134,6 @@ def train():
         assert (opt.val_root is not None), "No validation directory passed."
 
         val_dataset = dataio.SceneClassDataset(root_dir=opt.val_root,
-                                               stat_dir=opt.stat_root,
                                                obj_name=opt.obj_name,
                                                max_num_instances=opt.max_num_instances_val,
                                                max_observations_per_instance=opt.max_num_observations_val,
@@ -148,9 +146,7 @@ def train():
                                     drop_last=True,
                                     collate_fn=val_dataset.collate_fn)
 
-    #4489
-    #5660
-    model_srn = SRNsModel(num_instances=4489,
+    model_srn = SRNsModel(num_instances=train_dataset.num_instances,
                       latent_dim=opt.embedding_size,
                       tracing_steps=opt.tracing_steps)
 
@@ -167,6 +163,7 @@ def train():
     if opt.model_type == 'linear':
         print('Using Linear Regressor')
         model_linear = LinearModel()
+        
     elif opt.model_type == 'mlp':
         print('Using 3-Layer MLP')
         model_linear = MLP()
@@ -177,7 +174,16 @@ def train():
 
     if opt.checkpoint_path is not None:
         print("Loading model from %s" % opt.checkpoint_path)
-        util.custom_load_linear(model_srn, path=opt.checkpoint_path,
+
+        num_training_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
+        model_srn = SRNsModel(num_instances=num_training_instances,
+                      latent_dim=opt.embedding_size,
+                      tracing_steps=opt.tracing_steps)
+
+        model_srn.eval()
+        model_srn.cuda()
+
+        util.custom_load(model_srn, path=opt.checkpoint_path,
                          discriminator=None,
                          optimizer=None,
                          overwrite_embeddings=opt.overwrite_embeddings)
@@ -301,7 +307,7 @@ def train():
     util.custom_save(model_linear,
                      os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
                      discriminator=None,
-                     optimizer=optimizer)
+                     optimizer=[optimizer])
 
 
 def main():
