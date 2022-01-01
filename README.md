@@ -32,7 +32,7 @@ The code is organized as follows:
 * train.py contains the code for pretraining as well as optimizing for test time observations
 * update.py contains the code for updating a pretrained SRN to perform semantic segmentation
 * test.py contains the testing code.
-* models.py contains the ar
+* models.py contains the various models used in all the experiments (SRNs, Linear, U-Net).
 * hyperlayers.py contains implementations of different hypernetworks.
 * custom_layers.py contains implementations of the raymarcher and the DeepVoxels U-Net renderer.
 * geometry.py contains utility functions for 3D and projective geometry.
