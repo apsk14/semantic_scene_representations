@@ -52,8 +52,8 @@ class DepthSampler(nn.Module):
 
         depth = geometry.depth_from_world(intersections, cam2world)
 
-        if self.training:
-            print(depth.min(), depth.max())
+        # if self.training:
+        #     print(depth.min(), depth.max())
 
         return intersections, depth
 
@@ -116,14 +116,14 @@ class Raymarcher(nn.Module):
 
             depth_step = depth - depths[-1]
 
-            if self.training:
-                print(depth_step.min(), depth_step.max())
+            # if self.training:
+            #     print(depth_step.min(), depth_step.max())
 
             depths.append(depth)
 
-        if self.training:
-            print(depths[-1].min(), depths[-1].max())
-            print('\n')
+        # if self.training:
+        #     print(depths[-1].min(), depths[-1].max())
+        #     print('\n')
 
         # Log the depth progression
         drawing_depths = torch.stack(depths, dim=0)[:,0,:,:]

@@ -6,7 +6,7 @@ python ../train_linear.py \
     --config_filepath "/home/amit/projects/semantic_scene_representations/config_main.yml" \
     --model_type linear \
     --specific_observation_idcs 0,1,2 \
-    --logging_root /media/hugespace/amit/srn_new_logging/linear_30 \
+    --logging_root /media/hugespace/amit/srn_new_logging/linear_30_newtrain \
     --checkpoint_path /media/hugespace/amit/srn_new_logging/Chair/train_vanilla/checkpoints/epoch_0079_iter_100000.pth \
     --no_validation \
     --img_sidelengths 128 \

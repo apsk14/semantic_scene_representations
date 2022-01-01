@@ -19,19 +19,17 @@ import hyperlayers
 
 import matplotlib.cm as cm
 
-#NUM_CLASSES = 11 # Tables
-#NUM_CLASSES = 18 # LAMPS
-NUM_CLASSES = 6 # Chairs
 
 class MLP(nn.Module):
-    def __init__(self):
+    def __init__(self, num_classes):
         super().__init__()
+        self.num_classes = num_classes
         self.num_hidden_units_phi = 256
         self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
         self.mlp = pytorch_prototyping.FCBlock(hidden_ch=self.num_hidden_units_phi,
                                                        num_hidden_layers=3,
                                                        in_features=self.num_hidden_units_phi,
-                                                       out_features=NUM_CLASSES,
+                                                       out_features=self.num_classes,
                                                        outermost_linear=True)
 
     def get_seg_loss(self, prediction, ground_truth):
@@ -56,11 +54,11 @@ class MLP(nn.Module):
         return {'seg': novel_views_seg}
 
 class LinearModel(nn.Module):
-    def __init__(self):
+    def __init__(self, num_classes):
         super().__init__()
-
+        self.num_classes = num_classes
         self.num_hidden_units_phi = 256
-        self.linear = nn.Linear(in_features=self.num_hidden_units_phi, out_features=NUM_CLASSES, bias=True)
+        self.linear = nn.Linear(in_features=self.num_hidden_units_phi, out_features=self.num_classes, bias=True)
         self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
 
 
@@ -86,12 +84,13 @@ class LinearModel(nn.Module):
         return {'seg':novel_views_seg}
 
 class UnetModel(nn.Module):
-    def __init__(self):
+    def __init__(self, num_classes):
         super().__init__()
 
+        self.num_classes= num_classes
         self.unet = pytorch_prototyping.Unet(
             in_channels=4,
-            out_channels=NUM_CLASSES,
+            out_channels=self.num_classes,
             nf0=64,
             num_down=7,
             max_channels=512,
@@ -103,7 +102,7 @@ class UnetModel(nn.Module):
 
         # colors for displaying segmented images
         self.colors = np.concatenate([np.array([[1., 1., 1.]]),
-                                      cm.rainbow(np.linspace(0, 1, NUM_CLASSES - 1))[:, :3]],
+                                      cm.rainbow(np.linspace(0, 1, self.num_classes - 1))[:, :3]],
                                      axis=0)
         # loss fn
         self.cross_entropy_loss = nn.CrossEntropyLoss(reduction='mean')
@@ -161,10 +160,9 @@ class UnetModel(nn.Module):
         pred_labels = seg_idx.cpu().numpy().squeeze()
         real_label = trgt_seg.cpu().numpy().squeeze()
 
-        num_classes = NUM_CLASSES
         cur_shape_iou_tot = 0.0
         cur_shape_iou_cnt = 0
-        for cur_class in range(0, num_classes):
+        for cur_class in range(0, self.num_classes):
 
             cur_gt_mask = (real_label == cur_class)
             cur_pred_mask = (pred_labels == cur_class)
@@ -241,7 +239,8 @@ class UnetModel(nn.Module):
                                                          normalize=False).cpu().detach().numpy(),iter)
 
 class SRNsModel(nn.Module):
-    def __init__(self,
+    def __init__(self, 
+                 num_classes,
                  num_instances,
                  latent_dim,
                  tracing_steps,
@@ -249,12 +248,13 @@ class SRNsModel(nn.Module):
                  point_cloud=False):
         super().__init__()
 
+        self.num_classes = num_classes
         self.latent_dim = latent_dim
         self.seg = seg
         self.pc = point_cloud
 
         self.colors = np.concatenate([np.array([[1.,1.,1.]]),
-                                      cm.rainbow(np.linspace(0, 1, NUM_CLASSES-1))[:,:3]],
+                                      cm.rainbow(np.linspace(0, 1, self.num_classes-1))[:,:3]],
                                      axis=0)
 
         self.num_hidden_units_phi = 256
@@ -285,7 +285,7 @@ class SRNsModel(nn.Module):
 
         if seg:
             self.class_generator = pytorch_prototyping.Unet(in_channels=self.num_hidden_units_phi,
-                                                            out_channels=NUM_CLASSES,
+                                                            out_channels=self.num_classes,
                                                             outermost_linear=True,
                                                             use_dropout=False,
                                                             dropout_prob=0.4,
@@ -511,10 +511,9 @@ class SRNsModel(nn.Module):
         pred_labels = seg_idx.cpu().numpy().squeeze()
         real_label = trgt_seg.cpu().numpy().squeeze()
 
-        num_classes = NUM_CLASSES
         cur_shape_iou_tot = 0.0
         cur_shape_iou_cnt = 0
-        for cur_class in range(0, num_classes):
+        for cur_class in range(0, self.num_classes):
 
             cur_gt_mask = (real_label == cur_class)
             cur_pred_mask = (pred_labels == cur_class)
@@ -543,10 +542,9 @@ class SRNsModel(nn.Module):
         pred_labels = prediction.cpu().numpy().squeeze()
         real_label = trgt_seg.cpu().numpy().squeeze()
 
-        num_classes = NUM_CLASSES
         cur_shape_iou_tot = 0.0
         cur_shape_iou_cnt = 0
-        for cur_class in range(0, num_classes):
+        for cur_class in range(0, self.num_classes):
 
             cur_gt_mask = (real_label == cur_class)
             cur_pred_mask = (pred_labels == cur_class)
@@ -634,7 +632,6 @@ class SRNsModel(nn.Module):
             output_vs_gt_seg = torch.cat((seg_idx.int(), trgt_segs.int()), dim=0)
             output_vs_gt_seg = util.lin2img(output_vs_gt_seg).int()
             output_vs_gt_seg = torch.from_numpy(colors[output_vs_gt_seg.cpu().numpy()].squeeze()).permute(0,3,1,2)
-            print('DISPSEG', output_vs_gt_seg.shape)
             writer.add_image(prefix + "Output_vs_gt_seg",
                              torchvision.utils.make_grid(output_vs_gt_seg[:,:3,:,:],
                                                          scale_each=False,
@@ -654,8 +651,6 @@ class SRNsModel(nn.Module):
         writer.add_scalar(prefix + "trgt_min", trgt_imgs.min(), iter)
         writer.add_scalar(prefix + "trgt_max", trgt_imgs.max(), iter)
 
-        if iter:
-            writer.add_scalar(prefix + "latent_reg_loss", self.latent_reg_loss, iter)
 
     def forward(self, input, z=None):
         self.logs = list()
@@ -710,7 +705,7 @@ class SRNsModel(nn.Module):
             sidelen = int(np.sqrt(num_samples))
             class_gen_input = v.permute(0,2,1).view(batch_size, self.num_hidden_units_phi, sidelen, sidelen)
             novel_views_seg = self.class_generator(class_gen_input)
-            novel_views_seg = novel_views_seg.view(batch_size, NUM_CLASSES, -1).permute(0,2,1)
+            novel_views_seg = novel_views_seg.view(batch_size, self.num_classes, -1).permute(0,2,1)
             if self.pc:
                 return {"rgb": novel_views, "seg": novel_views_seg, "depth": depth_maps, "features": v, "pts": points_xyz}
             else:

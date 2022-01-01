@@ -9,6 +9,7 @@ import new_dataset as dataio
 from torch.utils.data import DataLoader
 from srns_vincent import *
 import util
+import pdb
 
 p = configargparse.ArgumentParser()
 p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
@@ -29,8 +30,9 @@ p.add_argument('--batch_size_per_img_sidelength', type=str, default="92, 16",
 # Training options
 p.add_argument('--data_root', required=True, help='Path to directory with training data.')
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
-p.add_argument('--logging_root', type=str, default='./logs',
-               required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
+p.add_argument('--logging_root', type=str,
+               required=True, help='path to directory where checkpoints & tensorboard events will be saved.')
+p.add_argument('--log_dir', required=False, default = 'logs', help='Name of dir within logging root to store checkpoints and events')               
 p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
 
 p.add_argument('--lr', type=float, default=4e-4, help='learning rate. default=4e-4')
@@ -48,7 +50,7 @@ p.add_argument('--steps_til_ckpt', type=int, default=5000,
                help='Number of iterations until checkpoint is saved.')
 p.add_argument('--steps_til_val', type=int, default=1000,
                help='Number of iterations until validation set is run.')
-p.add_argument('--no_validation', action='store_true', default=False,
+p.add_argument('--validation', action='store_true', default=False,
                help='If no validation set should be used.')
 
 p.add_argument('--preload', action='store_true', default=False,
@@ -98,6 +100,8 @@ def train():
     else:
         specific_observation_idcs = None
 
+    logging_dir = os.path.join(opt.logging_root, opt.log_dir)
+
     img_sidelengths = util.parse_comma_separated_integers(opt.img_sidelengths)
     batch_size_per_sidelength = util.parse_comma_separated_integers(opt.batch_size_per_img_sidelength)
     max_steps_per_sidelength = util.parse_comma_separated_integers(opt.max_steps_per_img_sidelength)
@@ -115,23 +119,23 @@ def train():
     assert (len(img_sidelengths) == len(max_steps_per_sidelength)), \
         "Different number of image sidelengths passed than max steps."
 
-    if not opt.no_validation:
+    if opt.validation:
         assert (opt.val_root is not None), "No validation directory passed."
 
         val_dataset = dataio.SceneClassDataset(root_dir=opt.val_root,
                                                obj_name=opt.obj_name,
                                                max_num_instances=opt.max_num_instances_val,
                                                max_observations_per_instance=opt.max_num_observations_val,
-                                               img_sidelength=opt.img_sidelength,
+                                               img_sidelength=max(img_sidelengths),
                                                samples_per_instance=1)
-        collate_fn = val_dataset.collate_fn
         val_dataloader = DataLoader(val_dataset,
-                                    batch_size=2,
+                                    batch_size=opt.batch_size,
                                     shuffle=False,
                                     drop_last=True,
                                     collate_fn=val_dataset.collate_fn)
 
-    model = SRNsModel(num_instances=train_dataset.num_instances,
+    model = SRNsModel(num_classes=train_dataset.num_classes,
+                      num_instances=train_dataset.num_instances,
                       latent_dim=opt.embedding_size,
                       tracing_steps=opt.tracing_steps)
     model.train()
@@ -144,19 +148,19 @@ def train():
                          optimizer=None,
                          overwrite_embeddings=opt.overwrite_embeddings)
 
-    ckpt_dir = os.path.join(opt.logging_root, 'checkpoints')
-    events_dir = os.path.join(opt.logging_root, 'events')
+    ckpt_dir = os.path.join(logging_dir, 'checkpoints')
+    events_dir = os.path.join(logging_dir, 'events')
 
-    util.cond_mkdir(opt.logging_root)
+    util.cond_mkdir(logging_dir)
     util.cond_mkdir(ckpt_dir)
     util.cond_mkdir(events_dir)
 
     # Save command-line parameters log directory.
-    with open(os.path.join(opt.logging_root, "params.txt"), "w") as out_file:
+    with open(os.path.join(logging_dir, "params.txt"), "w") as out_file:
         out_file.write('\n'.join(["%s: %s" % (key, value) for key, value in vars(opt).items()]))
 
     # Save text summary of model into log directory.
-    with open(os.path.join(opt.logging_root, "model.txt"), "w") as out_file:
+    with open(os.path.join(logging_dir, "model.txt"), "w") as out_file:
         out_file.write(str(model))
 
 
@@ -213,6 +217,7 @@ def train():
                               + weighted_class_loss
                               + weighted_reg_loss
                               + weighted_latent_loss)
+
                 total_loss.backward()
                 sparse_optimizer.step()
                 dense_optimizer.step()
@@ -229,7 +234,7 @@ def train():
                 writer.add_scalar("scaled_latent_loss", weighted_latent_loss, iter)
                 writer.add_scalar("total_loss", total_loss, iter)
 
-                if iter % opt.steps_til_val == 0 and not opt.no_validation:
+                if iter % opt.steps_til_val == 0 and opt.validation:
                     print("Running validation set...")
 
                     model.eval()
@@ -237,17 +242,21 @@ def train():
                         psnrs = []
                         ssims = []
                         dist_losses = []
+                        class_losses = []
                         for model_input, ground_truth in val_dataloader:
                             model_outputs = model(model_input)
 
                             dist_loss = model.get_image_loss(model_outputs, ground_truth).cpu().numpy()
+                            class_loss = model.get_seg_loss(model_outputs, ground_truth).cpu().numpy()
                             psnr, ssim = model.get_psnr(model_outputs, ground_truth)
                             psnrs.append(psnr)
                             ssims.append(ssim)
                             dist_losses.append(dist_loss)
+                            class_losses.append(class_loss)
 
-                            model.write_updates(writer, model_outputs, ground_truth, iter, prefix='val_')
+                            model.write_updates(writer, model_input, model_outputs, iter, prefix='val_')
 
+                        writer.add_scalar("val_class_loss", np.mean(class_losses), iter)
                         writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
                         writer.add_scalar("val_psnr", np.mean(psnrs), iter)
                         writer.add_scalar("val_ssim", np.mean(ssims), iter)

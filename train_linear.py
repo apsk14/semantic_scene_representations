@@ -8,7 +8,7 @@ import numpy as np
 
 import new_dataset as dataio
 from torch.utils.data import DataLoader
-from linear import *
+from srns_vincent import *
 import util
 
 p = configargparse.ArgumentParser()
@@ -53,7 +53,7 @@ p.add_argument('--steps_til_ckpt', type=int, default=5000,
                help='Number of iterations until checkpoint is saved.')
 p.add_argument('--steps_til_val', type=int, default=1000,
                help='Number of iterations until validation set is run.')
-p.add_argument('--no_validation', action='store_true', default=False,
+p.add_argument('--validation', action='store_true', default=False,
                help='If no validation set should be used.')
 
 p.add_argument('--preload', action='store_true', default=False,
@@ -75,8 +75,6 @@ p.add_argument('--specific_observation_idcs', type=str, default=None,
 
 p.add_argument('--specific_ins', nargs = '+', default=None,
                help='Only pick a subset of instances.')
-
-p.add_argument('--specific_class', type=int, default=0, help='One versus all training for this specific class')
 
 p.add_argument('--max_num_instances_train', type=int, default=-1,
                help='If \'data_root\' has more instances, only the first max_num_instances_train are used')
@@ -122,15 +120,14 @@ def train():
                                              img_sidelength=img_sidelengths[0],
                                              specific_observation_idcs=specific_observation_idcs,
                                              specific_ins=opt.specific_ins,
-                                             samples_per_instance=1,
-                                             specific_class=opt.specific_class)
+                                             samples_per_instance=1)
 
     assert (len(img_sidelengths) == len(batch_size_per_sidelength)), \
         "Different number of image sidelengths passed than batch sizes."
     assert (len(img_sidelengths) == len(max_steps_per_sidelength)), \
         "Different number of image sidelengths passed than max steps."
 
-    if not opt.no_validation:
+    if opt.validation:
         assert (opt.val_root is not None), "No validation directory passed."
 
         val_dataset = dataio.SceneClassDataset(root_dir=opt.val_root,
@@ -139,44 +136,20 @@ def train():
                                                max_observations_per_instance=opt.max_num_observations_val,
                                                img_sidelength=opt.img_sidelength,
                                                samples_per_instance=1)
-        collate_fn = val_dataset.collate_fn
         val_dataloader = DataLoader(val_dataset,
                                     batch_size=2,
                                     shuffle=False,
                                     drop_last=True,
                                     collate_fn=val_dataset.collate_fn)
 
-    model_srn = SRNsModel(num_instances=train_dataset.num_instances,
-                      latent_dim=opt.embedding_size,
-                      tracing_steps=opt.tracing_steps)
-
-    model_srn.eval()
-    model_srn.cuda()
-
-    if not opt.no_validation:
-        model_srn_val = SRNsModel(num_instances=val_dataset.num_instances,
-                      latent_dim=opt.embedding_size,
-                      tracing_steps=opt.tracing_steps)
-        model_srn_val.eval()
-        model_srn_val.cuda()
-
-    if opt.model_type == 'linear':
-        print('Using Linear Regressor')
-        model_linear = LinearModel()
-        
-    elif opt.model_type == 'mlp':
-        print('Using 3-Layer MLP')
-        model_linear = MLP()
-
-    model_linear.train()
-    model_linear.cuda()
 
 
     if opt.checkpoint_path is not None:
         print("Loading model from %s" % opt.checkpoint_path)
 
         num_training_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
-        model_srn = SRNsModel(num_instances=num_training_instances,
+        model_srn = SRNsModel(num_classes=train_dataset.num_classes,
+                      num_instances=num_training_instances,
                       latent_dim=opt.embedding_size,
                       tracing_steps=opt.tracing_steps)
 
@@ -187,12 +160,31 @@ def train():
                          discriminator=None,
                          optimizer=None,
                          overwrite_embeddings=opt.overwrite_embeddings)
-    if not opt.no_validation:
+    if opt.validation:
         print("Loading model from %s" % opt.validation_path)
-        util.custom_load_linear(model_srn_val, path=opt.validation_path,
+
+        num_validation_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
+        model_srn_val = SRNsModel(num_classes=val_dataset.num_classes,
+                      num_instances=num_validation_instances,
+                      latent_dim=opt.embedding_size,
+                      tracing_steps=opt.tracing_steps)
+        model_srn_val.eval()
+        model_srn_val.cuda()
+        util.custom_load(model_srn_val, path=opt.validation_path,
                                 discriminator=None,
                                 optimizer=None,
                                 overwrite_embeddings=opt.overwrite_embeddings)
+
+    if opt.model_type == 'linear':
+        print('Using Linear Regressor')
+        model_linear = LinearModel(train_dataset.num_classes)
+        
+    elif opt.model_type == 'mlp':
+        print('Using 3-Layer MLP')
+        model_linear = MLP(train_dataset.num_classes)
+
+    model_linear.train()
+    model_linear.cuda()
 
     ckpt_dir = os.path.join(opt.logging_root, 'checkpoints')
     events_dir = os.path.join(opt.logging_root, 'events')
@@ -242,34 +234,25 @@ def train():
                 with torch.no_grad():
                     model_outputs = model_srn(model_input)
                 seg_out = model_linear(model_outputs['features'])
+                model_outputs.update(seg_out)
 
                 optimizer.zero_grad()
 
-                reg_loss = model_srn.get_regularization_loss(model_outputs, ground_truth)
-                latent_loss = model_srn.get_latent_loss()
                 class_loss = model_linear.get_seg_loss(seg_out, ground_truth)
 
-                weighted_reg_loss = opt.reg_weight * reg_loss
-                weighted_latent_loss = opt.kl_weight * latent_loss
                 weighted_class_loss = opt.class_weight * class_loss
 
-                total_loss = (weighted_class_loss
-                              + weighted_reg_loss
-                              + weighted_latent_loss)
+                total_loss = weighted_class_loss
                 total_loss.backward()
                 optimizer.step()
 
-                print("Iter %07d   Epoch %03d   L_class %0.4f   L_latent %0.4f   L_depth %0.4f" %
-                      (iter, epoch, weighted_class_loss,
-                       weighted_latent_loss, weighted_reg_loss))
-
-                model_srn.write_updates(writer, model_input, seg_out, iter)
+                print("Iter %07d   Epoch %03d   L_class %0.4f" %
+                      (iter, epoch, weighted_class_loss))
+                with torch.no_grad():
+                    model_srn.write_updates(writer, model_input, model_outputs, iter)
                 writer.add_scalar("scaled_class_loss", weighted_class_loss, iter)
-                writer.add_scalar("scaled_regularization_loss", weighted_reg_loss, iter)
-                writer.add_scalar("scaled_latent_loss", weighted_latent_loss, iter)
-                writer.add_scalar("total_loss", total_loss, iter)
 
-                if iter % opt.steps_til_val == 0 and not opt.no_validation:
+                if iter % opt.steps_til_val == 0 and opt.validation:
                     print("Running validation set...")
 
                     model_linear.eval()
@@ -280,11 +263,9 @@ def train():
                             seg_out = model_linear(model_outputs['features'])
                             class_loss = model_linear.get_seg_loss(seg_out, ground_truth).cpu().numpy()
                             class_losses.append(class_loss)
-                            model_srn_val.write_updates(writer, model_input, seg_out, iter, prefix='val_')
+                            model_srn_val.write_updates(writer, model_input, model_outputs, iter, prefix='val_')
 
-                        writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
-                        writer.add_scalar("val_psnr", np.mean(psnrs), iter)
-                        writer.add_scalar("val_ssim", np.mean(ssims), iter)
+                        writer.add_scalar("val_class_loss", np.mean(class_losses), iter)
                     model_linear.train()
 
                 if iter % opt.steps_til_ckpt == 0:

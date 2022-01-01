@@ -8,9 +8,7 @@ import csv
 import new_dataset as dataio
 from torch.utils.data import DataLoader
 from srns_vincent import *
-#from linear import *
 import util
-import pdb
 
 p = configargparse.ArgumentParser()
 p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
@@ -99,29 +97,32 @@ def test():
         print('Loading SRN....')
         assert (opt.checkpoint_path is not None), "Have to pass checkpoint!"
         num_training_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
-        model = SRNsModel(num_instances=num_training_instances,
+        model = SRNsModel(num_classes=test_set.num_classes,
+                      num_instances=num_training_instances,
                       latent_dim=opt.embedding_size,
                       tracing_steps=opt.tracing_steps)
 
     elif opt.eval_mode == 'unet':
         assert (opt.unet_path is not None), "Have to pass checkpoint!"
         print('Loading SRN....')
-        model = SRNsModel(num_instances=test_set.num_instances,
+        model = SRNsModel(num_classes=test_set.num_classes,
+                          num_instances=test_set.num_instances,
                           latent_dim=opt.embedding_size,
                           tracing_steps=opt.tracing_steps)
         print('Loading UNet....')
-        model_unet = UnetModel()
+        model_unet = UnetModel(num_classes=test_set.num_classes,)
 
     elif opt.eval_mode == 'linear':
         assert (opt.linear_path is not None), "Have to pass checkpoint!"
         print('Loading Linear....')
         num_training_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
-        model = SRNsModel(num_instances=num_training_instances, 
+        model = SRNsModel(num_classes=test_set.num_classes,
+                          num_instances=num_training_instances, 
                           latent_dim=opt.embedding_size,
                           tracing_steps=opt.tracing_steps,
                           point_cloud=opt.point_cloud)
 
-        model_linear = LinearModel()
+        model_linear = LinearModel(num_classes=test_set.num_classes,)
 
 
 

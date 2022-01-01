@@ -6,10 +6,7 @@ import data_util
 import util
 import pdb
 from torch.utils.data import DataLoader
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
 
-import cv2
 
 
 def pick(list, item_idcs):
@@ -26,17 +23,11 @@ class SceneInstanceDataset():
                  instance_dir,
                  specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
                  img_sidelength=None,
-                 num_images=-1,
-                 part_name2id={},
-                 part_old2new={},
-                 specific_class=0):
+                 num_images=-1):
 
         self.instance_idx = instance_idx
         self.img_sidelength = img_sidelength
         self.instance_dir = instance_dir
-        self.specific_class= specific_class
-
-        #og_dir
 
         color_dir = os.path.join(instance_dir, "rgb")
         pose_dir = os.path.join(instance_dir, "pose")
@@ -65,38 +56,14 @@ class SceneInstanceDataset():
             self.pose_paths = pick(self.pose_paths, idcs)
             self.seg_paths = pick(self.seg_paths, idcs)
 
-        #self.transfer_map = data_util.load_transfer_map(self.transfer_path, part_name2id)
         self.pts, self.rgb_pts = data_util.load_pts(self.pts_path)
-
-        #label_map = data_util.load_label_map(self.mapping_path)
         self.labels = data_util.load_labels(self.labels_path)
 
         test_rgb = data_util.load_rgb(self.color_paths[0])
         self.img_width, self.img_height = test_rgb.shape[1], test_rgb.shape[2]
 
         print(instance_dir)
-        # #colors = np.concatenate([np.array([[1., 1., 1.]]), cm.rainbow(np.linspace(0, 1, 11 - 1))[:, :3]], axis=0)
-        # #print(os.path.join(instance_dir, 'seg'))
-        # #pdb.set_trace()
-        # #os.system('rm ' + os.path.join(instance_dir, 'seg') + "/*.png")
-        # #labs = map(str, self.labels)
-        # # if instance_dir == '/media/hugespace/amit/semantic_srn_data/Chair/Chair.train/1006be65e7bc937e9141f9b58470d646/':
-        # #     print('yooooooö')
-        # #     pdb.set_trace()
-
-        # # pdb.set_trace()
-        # #os.system('rm ' + os.path.join(instance_dir, 'point_cloud') + "/sample-points-all-label-10000.txt")
-        # #test = np.loadtxt(self.labels_path_new, dtype=int)
-        # #assert( (test-self.labels).sum() < 1e-10 )
-
-        # for ind, ins in enumerate(self.seg_paths):
-        #     #segs = data_util.transfer_labels(self.seg_paths[ind], self.transfer_map, self.img_sidelength, self.specific_class).squeeze()
-        #     #segs = segs.reshape(1, -1).transpose(1, 0)
-        #     segs = data_util.load_seg(self.seg_paths[ind])
-        #     pdb.set_trace()
-        #     #np.save(ins.split('.png')[0]+'.npy', segs)
-
-
+        
 
 
     def set_img_sidelength(self, new_img_sidelength):
@@ -120,9 +87,7 @@ class SceneInstanceDataset():
         uv = torch.from_numpy(np.flip(uv, axis=0).copy()).long()
         uv = uv.reshape(2, -1).transpose(1, 0)
 
-        #segs = data_util.transfer_labels(self.seg_paths[idx], self.transfer_map, self.img_sidelength, self.specific_class)
         segs = data_util.load_seg(self.seg_paths[idx], sidelength=self.img_sidelength)
-
         segs = segs.reshape(1, -1).transpose(1, 0)
 
         instance_id = self.instance_dir.split('/')[-2]
@@ -152,8 +117,7 @@ class SceneClassDataset(torch.utils.data.Dataset):
                  max_observations_per_instance=-1,
                  specific_observation_idcs=None,  # For few-shot case: Can pick specific observations only
                  samples_per_instance=1,
-                 specific_ins = [],
-                 specific_class = 0):
+                 specific_ins = []):
 
 
         self.samples_per_instance = samples_per_instance
@@ -182,24 +146,17 @@ class SceneClassDataset(torch.utils.data.Dataset):
         else:
             specific_ins_id = range(0,len(self.instance_dirs))
 
-
-        # seg_level_fn = os.path.join(os.path.dirname(root_dir), obj_name+'-level-1.txt')
-        # obj_name = ''.join(e for e in obj_name if e.isalnum())
         seg_level_fn = os.path.join(os.path.dirname(os.path.normpath(root_dir)), ''.join([obj_name,'-level-1.txt']))
         with open(seg_level_fn, 'r') as fin:
-            part_name2id = {d.split()[1]: int(d.split()[0]) for d in fin.readlines()}
-        seg_mapping_fn = os.path.join(os.path.dirname(os.path.normpath(root_dir)), ''.join([obj_name,'.txt']))
-        with open(seg_mapping_fn, 'r') as fin:
-            part_old2new = {d.rstrip().split()[0]: d.rstrip().split()[1] for d in fin.readlines()}
+            class_list = [int(d.split()[0]) for d in fin.readlines()]
+        self.num_classes = max(class_list) + 1
+
 
         self.all_instances = [SceneInstanceDataset(instance_idx=id,
                                                    instance_dir=dir,
                                                    specific_observation_idcs=specific_observation_idcs,
                                                    img_sidelength=img_sidelength,
-                                                   num_images=max_observations_per_instance,
-                                                   part_name2id=part_name2id,
-                                                   part_old2new=part_old2new,
-                                                   specific_class=specific_class)
+                                                   num_images=max_observations_per_instance)
                               for idx, (dir,id) in enumerate(zip(self.instance_dirs, specific_ins_id))]
 
         self.num_per_instance_observations = [len(obj) for obj in self.all_instances]
@@ -286,16 +243,12 @@ class SceneClassDatasetWithContext(SceneClassDataset):
         return [new_observations], [ground_truth[0]]
 
 def main():
-    # TODO: goal is to write out a new segmentation folder for each instance.
+    #unit test
+    name_list = ['Chair.train', 'Chair.test'] # feel free to add more
 
-    # go to data path and read errythang like you normally do but now write out the final seg maps as npy files.
-
-    name_list = ['Chair.test']
-
-    #name_list = ['Chair.test']
     for name in name_list:
         print(name)
-        data_path = '/media/hugespace/amit/semantic_srn_data/Chair/' + name
+        data_path = '' + name  # put in your own datapath here 
 
         train_dataset = SceneClassDataset(root_dir=data_path,
                                              obj_name='Chair',
@@ -315,9 +268,8 @@ def main():
 
 
     train_dataset[1]
-    pdb.set_trace()
-    # for model_input, ground_truth in train_dataloader:
-    #     print(model_input['instance_id'])
+    for model_input, ground_truth in train_dataloader:
+        print(model_input['instance_id'])
 
 
 if __name__ == "__main__":
