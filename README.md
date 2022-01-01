@@ -22,16 +22,17 @@ conda env create -f environment.yml
 This repository depends on a git submodule, [pytorch-prototyping](https://github.com/vsitzmann/pytorch_prototyping). 
 To clone both the main repo and the submodule, use
 ```
-git clone --recurse-submodules https://github.com/vsitzmann/scene-representation-networks.git
+git clone --recurse-submodules https://github.com/apsk14/semantic_scene_representations.git
 ```
 
 ### High-Level structure
 The code is organized as follows:
 * dataio.py loads training and testing data.
 * data_util.py and util.py contain utility functions.
-* train.py contains the training code.
+* train.py contains the code for pretraining as well as optimizing for test time observations
+* update.py contains the code for updating a pretrained SRN to perform semantic segmentation
 * test.py contains the testing code.
-* srns.py contains the core SRNs model.
+* models.py contains the ar
 * hyperlayers.py contains implementations of different hypernetworks.
 * custom_layers.py contains implementations of the raymarcher and the DeepVoxels U-Net renderer.
 * geometry.py contains utility functions for 3D and projective geometry.
@@ -49,17 +50,11 @@ Alternatively one can simply run setup.sh in the desired location for the datase
 
 Obtaining a semantic scene representation requires 4 main steps.
 
-1) Training a vanilla SRN (Training)
+1) Training a vanilla SRN
 Please refer to the original SRNS repository for this step. See training_scripts/vanilla_srn.sh for an example call.
 
-2) Updating SRN for semantic segmentation (Training)
+2) Updating SRN for semantic segmentation
 In this step the features of a pretrained SRN are linearly regressed to semantic labels---the goal being to learn the regression coefficents. An example call for this step is found in seg_scripts/linear_update.sh.
-
-3) Learning latent codes from test time observations (Testing)
-In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. An example call is found in test_scripts/single_shot.sh
-
-4) Rendering results from the learned semantic SRN
-Finally, with an SRN in hand for each test object, this final step produces samples of the semantic SRN in the form of rgb images an point clouds as well as their corresponding semantic segmentation maps and point clouds. An example call is found in result_scripts/single_shot.sh
 
 
 
@@ -80,6 +75,13 @@ python train.py --config_filepath train_configs/cars.yml
 ```
 
 ### Testing
+
+3) Learning latent codes from test time observations
+In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. An example call is found in test_scripts/single_shot.sh
+
+4) Rendering results from the learned semantic SRN
+Finally, with an SRN in hand for each test object, this final step produces samples of the semantic SRN in the form of rgb images an point clouds as well as their corresponding semantic segmentation maps and point clouds. An example call is found in result_scripts/single_shot.sh
+
 Example test call:
 ```
 python test.py --data_root [path to directory with dataset] ] \
