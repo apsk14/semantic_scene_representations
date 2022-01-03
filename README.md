@@ -77,7 +77,7 @@ python ../update.py \
     --config_filepath "path to config_train_chair.yml" \ 
     --model_type linear \ # specify the semantic predictor type ('linear' regressor or 1 layer 'MLP')
     --log_dir srnlinear \ # where to save out the learned linear coefficients
-    --checkpoint_path "path to pretrained vanilla srn" \ # pretrained SRN which is to be updated
+    --checkpoint_path "path to pretrained vanilla srn" \ # pretrained SRN from step 1 which is to be updated
     --img_sidelengths 128  --batch_size_per_img_sidelength 4  --max_steps_per_img_sidelength 5000 \
     --steps_til_ckpt 500 \ # how often to checkpoint
     --max_num_instances_train 10 \ # number of chair instances to use 
@@ -88,7 +88,7 @@ python ../update.py \
 
 **3) Learning latent codes from test time observations**
 
-In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. The scripts for testing can be found in ```test_scripts```. An example call for testing given a single RGB observation (single shot) is:
+In this step, a number of views from a test time, unseen object are used to obtain the test time SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. The scripts for testing can be found in ```test_scripts```. An example call for testing given a single RGB observation (single shot) is:
 ```
 python ../train.py \
 --config_filepath "path to config_test_chair.yml"  \
