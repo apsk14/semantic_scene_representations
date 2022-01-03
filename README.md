@@ -47,13 +47,12 @@ The dataset used in the paper was custom rendered from Blender by registering pa
 
 The dataset along with pretrained models are stored [here](https://berkeley.box.com/s/o8c21qq8hpvetdkmbj3ylecz18g4ixfe). Information for the dataset can be found at [semantic_scenes_dataset](https://github.com/apsk14/semantic_scenes_dataset)
 
-Alternatively one can simply run setup_data.sh in the desired location for the dataset to download the data, and setup_models.sh to download the pretrained models. Be wary, the dataset and models are both fairly large (~46GB and ~12GB respectively).
+Alternatively one can simply run ```setup_data.sh``` in the desired data location, and ```setup_models.sh``` to download the pretrained models. Be wary, the dataset and models are both fairly large (~46GB and ~12GB respectively).
 
 ## Useage
+Assuming proper download of the code and dataset, we will now guide the user through training and testing models. Be sure to put in the correct filepaths in the scripts and config files according to your own directory structure; i.e., make sure to have the correct paths to the data directory and trained models as required. Additionally, the scripts do not contain all possible arguments so please use the ``--help`` flag for any file (e.g., ```python train.py --help```) to see all the options.
 
-Assuming proper download of the code and dataset, we will now guide the user through training and testing models. Be sure to put in the correct filepaths in the scripts and config files according to your own directory structure; i.e., make sure to have the correct paths to the data directory and trained models as required. Additionally, the scripts do not contain all possible arguments so please use the ``--help`` flag for any file (e.g., train.py) to see the options.
-
-Obtaining a semantic scene representation requires 4 main steps: 2 training and 2 testing, each of which has its own directory for the corresponding scripts and is explained below. For a quick example useage, feel free to skip to the quick results section.
+Obtaining a semantic scene representation requires 4 main steps: 2 training and 2 testing, each of which has its own directory for the corresponding scripts and is explained below. For a quick example useage, feel free to skip to the **quick results** section.
 
 
 ### Training
@@ -62,7 +61,7 @@ Here a basic SRN is trained using images at various poses Please refer to the or
 ```
 python ../train.py  \
 	--config_filepath "path to config_train_chair.yml" \ # path to config file to set the data and logging roots
-	--log_dir train_vanilla \ # name of directory which will contain model checkpoints and tensorboard events
+	--log_dir vanilla_srn \ # name of directory which will contain model checkpoints and tensorboard events
 	--img_sidelengths 64,128 \ # training image sidelengths (max is 128) one for each training segment 
 	--batch_size_per_img_sidelength 4,8 \ # batch sizes, one for each training segment
 	--max_steps_per_img_sidelength 5000, 150000 \ # iterations, one for each training segment
@@ -77,7 +76,7 @@ An example call for this step is updating a vanilla SRN with 30 segmentation map
 python ../update.py \
     --config_filepath "path to config_train_chair.yml" \ 
     --model_type linear \ # specify the semantic predictor type ('linear' regressor or 1 layer 'MLP')
-    --log_dir updated_srn \ # where to save out the learned linear coefficients
+    --log_dir srnlinear \ # where to save out the learned linear coefficients
     --checkpoint_path "path to pretrained vanilla srn" \ # pretrained SRN which is to be updated
     --img_sidelengths 128  --batch_size_per_img_sidelength 4  --max_steps_per_img_sidelength 5000 \
     --steps_til_ckpt 500 \ # how often to checkpoint
@@ -101,7 +100,7 @@ In this step, a number of views from a test time, unseen object are used to obta
 ```
 python ../train.py \
 --config_filepath "path to config_test_chair.yml"  \
---log_dir test_vanilla_1 \ # name of dir in logging root to save out the test time SRNs
+--log_dir srn_singleshot_test \ # name of dir in logging root to save out the test time SRNs
 --checkpoint_path "path to pretrained srn" \ 
 --overwrite_embeddings \ # indicates that we want to learn just the latent codes for the test time examples with the rest of the SRN fixed.
 --img_sidelengths 128 --max_steps_per_img_sidelength 10000 --batch_size_per_img_sidelength 4 \
@@ -115,17 +114,17 @@ Finally, with a semantic SRN in hand for each test object, this final step simpl
 python ../test.py \
     --config_filepath "path to config_test_chair.yml" \
     --checkpoint_path "path to test time SRNS" \ # path to the outputs of step 3.
-    --log_dir linear_update_srn_30shot \
+    --log_dir srnlinear_results \
     --linear_path "path to linear coefficients for segmentation" \ # path to linear model from step 2
     --eval_mode 'linear' \ # indicates we are using a linearly updated vanilla SRN
     --input_idcs 65 \ # indicates which observation(s) were given at test time (step 3), in this case it was a single view.
     --point_cloud # indicates that we would like to render point clouds for every test instance in addition to novel views.
 ```
 
-In summary, to obtain our main result from the paper, run steps 1-4 as per each example. For each experiment above, config files provide the location of the data and where to log the results. These are specified in the config yml files (e.g., ```config_train_chair.yml``` and should be updated according to the users directory structure. 
+In summary, to obtain our main result from the paper, run steps 1-4 as per each example. For each experiment above, config files provide the location of the data (```data_root```) and where to log the results (```logging_root```). These are specified in the config yml files (e.g., ```config_train_chair.yml``` and should be updated according to the user's directory structure. 
 
 ### Logging
-The logging_root flag in the config files and log_dir flag in the arguments specify where each experiment logs its model files and tensorboard events. That is for each experiment, the relevant output is stored in ```logging_root/log_dir```. Then to visualize the training, go to this directory for the experiment of interest and run 
+The logging_root flag in the config files and log_dir flag in the arguments specify where each experiment logs its model files and tensorboard events. That is, for each experiment, the relevant output is stored in ```logging_root/log_dir```. Then, to visualize the training, go to this directory for the experiment of interest and run 
 ```
 tensorboard --logdir events/ --port xxxx
 ```
