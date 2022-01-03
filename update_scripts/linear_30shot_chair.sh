@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-
-#!/usr/bin/env bash
 export CUDA_VISIBLE_DEVICES=0
 python ../update.py \
     --config_filepath "path to config_train_chair.yml" \
