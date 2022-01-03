@@ -3,27 +3,29 @@
 [![Paper](https://img.shields.io/badge/paper-%09arXiv%3A2003.12673-yellow.svg)](https://arxiv.org/abs/2003.12673)
 [![Conference](https://img.shields.io/badge/3DV-2020-blue.svg)](http://3dv2020.dgcv.nii.ac.jp/)
 
+## Background
 This is the official implementation of the 3DV 2020 submission "Semantic Implicit Neural Scene Representations With Semi Supervised Training"
 
 Existing implicit representations for appearance and geometry of 3D scenes&mdash;such as Scene Representations Networks (SRNs)&mdash;can be updated to also perform semantic segmentation with only a few training examples. The resulting semantic scene representations offer a continuous, multimodal representation of a 3D scene which may find use in downstream applications such as robotics.
 
-In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the [SRNS repository](https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step.
+In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the [SRNS repository](https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step. For additional information on the concepts and experiments please refer to our paper (linked in the button above).
 
 [![video](https://img.youtube.com/vi/iVubC_ymE5w/0.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
-## Usage
-### Installation and Setup
+## Setup and Organization
+### Installation
 This repository depends on a git submodule, [pytorch-prototyping](https://github.com/vsitzmann/pytorch_prototyping). 
 To clone both the main repo and the submodule, use
 ```
 git clone --recurse-submodules https://github.com/apsk14/semantic_scene_representations.git
 ```
 
-This code was tested with python 3.7.8 and pytorch 1.8.1 I recommend using anaconda for dependency management. 
-You can create an environment with name "srns" with all dependencies like so:
+This code was tested with python 3.7.8 and pytorch 1.8.1. We recommend using anaconda for dependency management. For linux machines 
+you can create an environment with name "semantic_srn" with all dependencies like so:
 ```
 conda env create -f environment.yml
-```
+``` 
+If not on linux please refer to ```packages.yaml``` for a list of the used packages.
 
 ### High-Level structure
 The code is organized as follows:
@@ -38,20 +40,25 @@ The code is organized as follows:
 * geometry.py contains utility functions for 3D and projective geometry.
 * util.py contains misc utility functions.
 
+The 4 directories contain the scripts used to run experiments. These will be explained later in detail.
+
 ### Data
 The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/).
 
-The dataset along with pretrained models are stored [here](https://drive.google.com/drive/folders/1OkYgeRcIcLOFu1ft5mRODWNQaPJ0ps90?usp=sharing). Information for the dataset can be found at [semantic_scenes_dataset](https://github.com/apsk14/semantic_scenes_dataset)
+The dataset along with pretrained models are stored [here](https://berkeley.box.com/s/o8c21qq8hpvetdkmbj3ylecz18g4ixfe). Information for the dataset can be found at [semantic_scenes_dataset](https://github.com/apsk14/semantic_scenes_dataset)
 
-Alternatively one can simply run setup.sh in the desired location for the dataset to download it. Be wary, the dataset is fairly large (~46GB).
+Alternatively one can simply run setup_data.sh in the desired location for the dataset to download the data, and setup_models.sh to download the pretrained models. Be wary, the dataset and models are both fairly large (~46GB and ~12GB respectively).
+
+## Useage
+
+Assuming proper download of the code and dataset, we will now guide the user through training and testing models. Be sure to put in the correct filepaths in the scripts and config files according to your own directory structure; i.e., make sure to have the correct paths to the data directory and trained models as required. Additionally, the scripts do not contain all possible arguments so please use the ``--help`` flag for any file (e.g., train.py) to see the options.
+
+Obtaining a semantic scene representation requires 4 main steps: 2 training and 2 testing, each of which has its own directory for the corresponding scripts and is explained below. For a quick example useage, feel free to skip to the quick results section.
 
 
 ### Training
-
-Obtaining a semantic scene representation requires 4 main steps.
-
-1) Training a vanilla SRN
-Please refer to the original SRNS repository for this step. See training_scripts/vanilla_srn.sh for an example call.
+1) Training an SRN
+Here a basic SRN is trained using images at various poses Please refer to the original SRNS repository for details for this step. This can be done with only RGB images as per the original SRNs paper (vanilla SRN) or additionally supervised with segmentation data (semantic SRN). For our main experiment we first train a vanilla SRN. The scripts for this step are found in ```training_scripts/```. As an example consider training a vanilla SRN for Chairs:
 ```
 export CUDA_VISIBLE_DEVICES=0 # pick GPU  
 python ../train.py  \
@@ -64,7 +71,9 @@ python ../train.py  \
 ```
 
 2) Updating SRN for semantic segmentation
-In this step the features of a pretrained SRN are linearly regressed to semantic labels---the goal being to learn the regression coefficents. An example call for this step is found in seg_scripts/linear_update.sh.
+In this step the features of a pretrained SRN are linearly regressed to semantic labels using a small training set of segmentation maps---the goal here is to learn the optimal regression coefficents. Note that this step is only necessary if a vanilla SRN was trained since the semantic SRN was already trained to produce semantic labels. The scripts for this step can be found in ```update_scripts/```
+An example call for this step is updating a vanilla SRN with 30 segmentation maps (10 chair instances each with 3 views):
+
 
 
 
