@@ -63,13 +63,13 @@ python ../train.py  \
 	--log_dir vanilla_srn \ # name of directory which will contain model checkpoints and tensorboard events
 	--img_sidelengths 64,128 \ # training image sidelengths (max is 128) one for each training segment 
 	--batch_size_per_img_sidelength 4,8 \ # batch sizes, one for each training segment
-	--max_steps_per_img_sidelength 5000, 150000 \ # iterations, one for each training segment
+	--max_steps_per_img_sidelength 5000,150000 \ # iterations, one for each training segment
 	--class_weight=0. # indicates that only rgb will be used to train (vanilla srn)
 ```
 
 **2) Updating an SRN for semantic segmentation**
 
-In this step the features of a pretrained SRN are linearly regressed to semantic labels using a small training set of segmentation maps---the goal here is to learn the optimal regression coefficents. Note that this step is only necessary if a vanilla SRN was trained since the semantic SRN was already trained to produce semantic labels. The scripts for this step can be found in ```update_scripts/```
+In this step the features of a pretrained SRN are linearly regressed to semantic labels using a small training set of segmentation maps. The goal here is to learn the optimal regression coefficents mapping vanilla SRN features to semantic labels. Note that this step is only necessary if a vanilla SRN was trained since the semantic SRN was already trained to produce semantic labels. The scripts for this step can be found in ```update_scripts/```
 An example call for this step is updating a vanilla SRN with 30 segmentation maps (10 chair instances each with 3 views):
 
 ```
