@@ -8,7 +8,7 @@ This is the official implementation of the 3DV 2020 submission "Semantic Implici
 
 Existing implicit representations for appearance and geometry of 3D scenes&mdash;such as Scene Representations Networks (SRNs)&mdash;can be updated to also perform semantic segmentation with only a few training examples. The resulting semantic scene representations offer a continuous, multimodal representation of a 3D scene which may find use in downstream applications such as robotics.
 
-In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the [SRNS repository](https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step. For additional information on the concepts and experiments please refer to our paper (linked in the yellow button above).
+In this repository we guide the user through the construction of such a representation, by first pretraining an SRN and then updating it via our semi-supervised, few-shot training strategy. The primary focus is on the second step since the [SRNs repository](https://github.com/vsitzmann/scene-representation-networks) offers a comprehensive overview of the first step. For additional information on the concepts and experiments please refer to our paper (linked in the yellow button above).
 
 [![video](https://img.youtube.com/vi/iVubC_ymE5w/0.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
