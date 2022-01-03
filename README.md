@@ -25,7 +25,7 @@ you can create an environment with name "semantic_srn" with all dependencies lik
 ```
 conda env create -f environment.yml
 ``` 
-If not on linux please refer to ```packages.yaml``` for a list of the used packages.
+If not on linux please refer to ```packages.yaml``` for a list of the packages used.
 
 ### High-Level structure
 The code is organized as follows:
