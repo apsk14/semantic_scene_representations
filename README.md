@@ -43,7 +43,7 @@ The code is organized as follows:
 There are 4 directories which house the scripts used to run experiments. There is also a quick_run directory which can be used to see some quick results (see the **quick results** section for details).
 
 ### Data
-The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/).The dataset along with pretrained models are stored [here](https://berkeley.box.com/s/o8c21qq8hpvetdkmbj3ylecz18g4ixfe). Information for the dataset can be found at [semantic_scenes_dataset](https://github.com/apsk14/semantic_scenes_dataset)
+The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/). The dataset along with pretrained models are stored [here](https://berkeley.box.com/s/o8c21qq8hpvetdkmbj3ylecz18g4ixfe). Information for the dataset can be found at [semantic_scenes_dataset](https://github.com/apsk14/semantic_scenes_dataset)
 
 Alternatively one can simply run ```setup_data.sh``` in the desired data location, and ```setup_models.sh``` to download the pretrained models. Be wary, the dataset and models are both fairly large (~46GB and ~12GB respectively).
 
