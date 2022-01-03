@@ -12,17 +12,17 @@ In this repository we guide the user through the construction of such a represen
 [![video](https://img.youtube.com/vi/iVubC_ymE5w/0.jpg)](https://www.youtube.com/watch?v=iVubC_ymE5w)
 
 ## Usage
-### Installation
-This code was tested with python 3.7.8 and pytorch 1.8.1 I recommend using anaconda for dependency management. 
-You can create an environment with name "srns" with all dependencies like so:
-```
-conda env create -f environment.yml
-```
-
+### Installation and Setup
 This repository depends on a git submodule, [pytorch-prototyping](https://github.com/vsitzmann/pytorch_prototyping). 
 To clone both the main repo and the submodule, use
 ```
 git clone --recurse-submodules https://github.com/apsk14/semantic_scene_representations.git
+```
+
+This code was tested with python 3.7.8 and pytorch 1.8.1 I recommend using anaconda for dependency management. 
+You can create an environment with name "srns" with all dependencies like so:
+```
+conda env create -f environment.yml
 ```
 
 ### High-Level structure
@@ -52,6 +52,16 @@ Obtaining a semantic scene representation requires 4 main steps.
 
 1) Training a vanilla SRN
 Please refer to the original SRNS repository for this step. See training_scripts/vanilla_srn.sh for an example call.
+```
+export CUDA_VISIBLE_DEVICES=0 # pick GPU  
+python ../train.py  \
+	--config_filepath ..../config_train_chair.yml \ # path to config file to set the data and logging roots
+	--log_dir train_vanilla \ # name of directory which will contain model checkpoints and tensorboard events
+	--img_sidelengths 64,128 \ # training image sidelengths (max is 128) one for each training segment 
+	--batch_size_per_img_sidelength 4,8 \ # batch sizes, one for each training segment
+	--max_steps_per_img_sidelength 5000, 150000 \ # iterations, one for each training segment
+	--class_weight=0. # indicates that only rgb will be used to train (vanilla srn)
+```
 
 2) Updating SRN for semantic segmentation
 In this step the features of a pretrained SRN are linearly regressed to semantic labels---the goal being to learn the regression coefficents. An example call for this step is found in seg_scripts/linear_update.sh.
