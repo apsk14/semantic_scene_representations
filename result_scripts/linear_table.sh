@@ -6,9 +6,9 @@ export CUDA_VISIBLE_DEVICES=0
 
 python ../test.py \
     --config_filepath ~/projects/semantic_scene_representations/config_test_table.yml \
-    --checkpoint_path "/media/hugespace/amit/srn_new_logging/Chair/latent_vanilla/checkpoints/epoch_9999_iter_050000.pth" \
+    --checkpoint_path "/media/hugespace/amit/srn_logging/Table/test_vanilla_1/checkpoints/epoch_0000_iter_000000.pth" \
     --log_dir linear_update_srn_30shot \
-    --linear_path "/media/hugespace/amit/srn_logging/Chair/update_linear_30/checkpoints/epoch_0714_iter_005000.pth" \
+    --linear_path "/media/hugespace/amit/srn_logging/Table/update_linear_30_test/checkpoints/epoch_0000_iter_000000.pth" \
     --eval_mode 'linear' \
     --max_num_instances 5  \
     --batch_size 32 \

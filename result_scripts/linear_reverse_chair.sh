@@ -12,9 +12,5 @@ python ../test.py \
     --eval_mode 'linear' \
     --reverse \
     --max_num_instances 5  \
-    --batch_size 32 \
     --input_idcs 65 \
     --point_cloud
-
-#/media/data3/apsk14/srn_new_logging/Chair/latent_vanilla_single/checkpoints/epoch_1370_iter_080000.pth
-#media/data3/apsk14/srn_new_logging/Chair/latent_vanilla_multi/checkpoints/epoch_0026_iter_080000.pth

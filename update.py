@@ -31,7 +31,7 @@ p.add_argument('--data_root', required=True, help='Path to directory with traini
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
-p.add_argument('--log_dir', required=False, default = 'logs', help='Name of dir within logging root to store checkpoints and events')               
+p.add_argument('--log_dir', required=False, default = '', help='Name of dir within logging root to store checkpoints and events')               
 p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
 p.add_argument('--num_classes', type=int, default=6,
                help='number of seg classes for the given object')

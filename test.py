@@ -30,7 +30,7 @@ p.add_argument('--reverse', required=False, default=False, action='store_true', 
 
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='Path to directory where checkpoints & tensorboard events will be saved.')
-p.add_argument('--log_dir', required=False, default = 'logs', help='Name of dir within logging root to store checkpoints and events')               
+p.add_argument('--log_dir', required=False, default = '', help='Name of dir within logging root to store checkpoints and events')               
 p.add_argument('--batch_size', type=int, default=32, help='Batch size.')
 p.add_argument('--preload', action='store_true', default=False, help='Whether to preload data to RAM.')
 
@@ -42,8 +42,6 @@ p.add_argument('--input_idcs', type=str, default=None,
                help='Specifies which input views were given at test time. For visualization purposes')
 p.add_argument('--has_params', action='store_true', default=False,
                help='Whether each object instance already comes with its own parameter vector.')
-p.add_argument('--num_classes', type=int, default=6,
-               help='number of seg classes for the given object')
 p.add_argument('--linear', action='store_true', default=False,
                help='Whether each object instance already comes with its own parameter vector.')
 
@@ -78,6 +76,7 @@ def test():
         input_idcs = list(map(int, opt.input_idcs.split(',')))
     else:
         input_idcs = []
+
     
     logging_dir = os.path.join(opt.logging_root, opt.log_dir)
 
@@ -95,7 +94,7 @@ def test():
                          shuffle=False,
                          drop_last=False)
 
-
+    num_classes = test_set.num_classes
 
 
     if opt.eval_mode == 'srn':
@@ -105,7 +104,8 @@ def test():
         model = SRNsModel(num_classes=test_set.num_classes,
                       num_instances=num_training_instances,
                       latent_dim=opt.embedding_size,
-                      tracing_steps=opt.tracing_steps)
+                      tracing_steps=opt.tracing_steps,
+                      point_cloud=opt.point_cloud)
 
     elif opt.eval_mode == 'unet':
         assert (opt.unet_path is not None), "Have to pass checkpoint!"
@@ -113,7 +113,8 @@ def test():
         model = SRNsModel(num_classes=test_set.num_classes,
                           num_instances=test_set.num_instances,
                           latent_dim=opt.embedding_size,
-                          tracing_steps=opt.tracing_steps)
+                          tracing_steps=opt.tracing_steps,
+                          point_cloud=opt.point_cloud)
         print('Loading UNet....')
         model_unet = UnetModel(num_classes=test_set.num_classes,)
 
@@ -170,9 +171,9 @@ def test():
         instance_psnrs = list()
         instance_ssims = list()
 
-        part_intersect = np.zeros(opt.num_classes, dtype=np.float32)
-        part_union = np.zeros(opt.num_classes, dtype=np.float32)
-        confusion = np.zeros((opt.num_classes, 3), dtype=int) # TODO: find a way to generalize this
+        part_intersect = np.zeros(num_classes, dtype=np.float32)
+        part_union = np.zeros(num_classes, dtype=np.float32)
+        confusion = np.zeros((num_classes, 3), dtype=int) # TODO: find a way to generalize this
         
         output_flag = 1
         instance_idx = 0

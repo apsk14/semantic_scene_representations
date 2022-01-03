@@ -1,4 +1,4 @@
-name: test
+name: semantic_srn
 channels:
   - pytorch
   - nvidia

@@ -7,7 +7,7 @@ python ../update.py \
     --model_type linear \
     --specific_observation_idcs 0,1,2 \
     --log_dir update_linear_30_test \
-    --checkpoint_path /media/hugespace/amit/srn_new_logging/Chair/train_vanilla/checkpoints/epoch_0079_iter_100000.pth \
+    --checkpoint_path /media/hugespace/amit/srn_logging/Table/train_vanilla/checkpoints/epoch_0000_iter_000000.pth \
     --img_sidelengths 128 \
     --batch_size_per_img_sidelength 4 \
     --max_steps_per_img_sidelength 5000 \
