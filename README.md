@@ -40,7 +40,7 @@ The code is organized as follows:
 * geometry.py contains utility functions for 3D and projective geometry.
 * util.py contains misc utility functions.
 
-There are 4 directories for the scripts used to run experiments which will be explained later in detail. There is also a quick_run directory which can be used to see some quick results (see the **quick results** section for details).
+There are 4 directories which house the scripts used to run experiments. There is also a quick_run directory which can be used to see some quick results (see the **quick results** section for details).
 
 ### Data
 The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/).
