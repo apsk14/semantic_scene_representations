@@ -40,7 +40,7 @@ The code is organized as follows:
 * geometry.py contains utility functions for 3D and projective geometry.
 * util.py contains misc utility functions.
 
-The 4 directories contain the scripts used to run experiments. These will be explained later in detail.
+There are 4 directories for the scripts used to run experiments which will be explained later in detail. There is also a quick_run directory which can be used to see some quick results (see the **quick results** section for details).
 
 ### Data
 The dataset used in the paper was custom rendered from Blender by registering pairs of objects (chairs and tables) from [Partnet v0](https://partnet.cs.stanford.edu/) and [Shapenet v2](https://shapenet.org/).
@@ -131,7 +131,7 @@ tensorboard --logdir events/ --port xxxx
 which can be accessed at the site localhost:xxxx. For remote access make sure to forward xxxx to a local port. 
 
 ## Quick results
-To test the setup as well as see some quick results for multi-shot SRN+Linear (from the paper), go into ```quick_setup/``` and modify ```quick_run.sh``` with the relevant paths. Then while in the ```quick_setup/``` directory, run ```quick_run.sh``` and check out the results in the newly created ```quick_setup/results/``` directory.
+To test the setup as well as see some quick results for multi-shot SRN+Linear (from the paper), go into ```quick_run/``` and modify ```run.sh``` with the relevant paths. Then while in the ```quick_run/``` directory, run ```run.sh``` and check out the results in the newly created ```quick_run/results/``` directory.
 
 ## Misc
 ### Citation
