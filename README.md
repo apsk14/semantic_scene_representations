@@ -55,6 +55,7 @@ Obtaining a semantic scene representation requires 4 main steps: 2 training and 
 
 ### Training
 1) Training an SRN
+
 Here a basic SRN is trained using images at various poses Please refer to the original SRNS repository for details for this step. This can be done with only RGB images as per the original SRNs paper (vanilla SRN) or additionally supervised with segmentation data (semantic SRN). For our main experiment we first train a vanilla SRN. The scripts for this step are found in ```training_scripts/```. As an example consider training a vanilla SRN for Chairs:
 ```
 python ../train.py  \
