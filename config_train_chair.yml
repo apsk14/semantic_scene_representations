@@ -1,5 +1,4 @@
 obj_name: Chair
-data_root: /media/hugespace/amit/semantic_srn_data/Chair/Chair.train # Path to chairs training dataset.
-logging_root: /media/hugespace/amit/srn_logging/Chair # Path to chairs training dataset.
-
+data_root: "path to training dataset" # like Chair.train
+logging_root: "put desired logging location" 
 

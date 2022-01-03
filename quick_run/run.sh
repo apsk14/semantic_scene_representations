@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 export CUDA_VISIBLE_DEVICES=0
-
 python ../test.py \
-    --data_root /media/hugespace/amit/semantic_srn_data/Chair/Chair.test/ \
+    --data_root "put path to Chair.test" \
     --logging_root results/ \
     --obj_name Chair \
     --checkpoint_path "test_vanilla_50/epoch_0026_iter_080000.pth" \

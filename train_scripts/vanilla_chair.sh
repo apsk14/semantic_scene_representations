@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES="put GPU here"
 python ../train.py  \
---config_filepath ~/projects/semantic_scene_representations/config_train_chair.yml \
---log_dir train_vanilla_env \
---max_num_instances_train 20 \
---img_sidelengths 64 \
---batch_size_per_img_sidelength 4 \
---max_steps_per_img_sidelength 5000 \
---steps_til_ckpt 10000 \
+--config_filepath "path to config_train_chair.yml" \
+--log_dir "put desired name of logging dir" \
+--img_sidelengths 64,128 \
+--batch_size_per_img_sidelength 4,8 \
+--max_steps_per_img_sidelength 5000,150000 \
 --class_weight=0.
 
