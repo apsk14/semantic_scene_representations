@@ -121,7 +121,7 @@ The logging_root flag in the config files and log_dir flag in the arguments spec
 ```
 tensorboard --logdir events/ --port xxxx
 ```
-which can be accessed at the site localhost:xxxx. For remote access make sure to forward xxxx to a local port. 
+which can be accessed at the site localhost:xxxx where xxxx is a 4 digit number like 5000. For remote access make sure to forward xxxx to a local port. 
 
 ## Quick results
 To test the setup as well as see some quick results for multi-shot SRN+Linear (from the paper) go into ```quick_run/``` directory. Once there, first run  ```get_models.sh``` to get the necessary pretrained models. Then, modify ```run.sh``` with the relevant paths. Finally, while in the ```quick_run/``` directory, run ```run.sh``` and check out the results in the newly created ```quick_run/results/``` directory.
