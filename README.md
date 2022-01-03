@@ -124,7 +124,7 @@ tensorboard --logdir events/ --port xxxx
 which can be accessed at the site localhost:xxxx. For remote access make sure to forward xxxx to a local port. 
 
 ## Quick results
-To test the setup as well as see some quick results for multi-shot SRN+Linear (from the paper), go into ```quick_run/``` and modify ```run.sh``` with the relevant paths. Then while in the ```quick_run/``` directory, run ```run.sh``` and check out the results in the newly created ```quick_run/results/``` directory.
+To test the setup as well as see some quick results for multi-shot SRN+Linear (from the paper) go into ```quick_run/``` directory. Once there, first run  ```get_models.sh``` to get the necessary pretrained models. Then, modify ```run.sh``` with the relevant paths. Finally, while in the ```quick_run/``` directory, run ```run.sh``` and check out the results in the newly created ```quick_run/results/``` directory.
 
 ## Misc
 ### Citation
