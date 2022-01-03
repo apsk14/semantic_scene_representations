@@ -1,3 +1,0 @@
-data_root: /media/hugespace/amit/semantic_srn_data/Chair/Chair.train # Path to chairs training dataset.
-obj_name: Chair
-
