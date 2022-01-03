@@ -60,9 +60,8 @@ Obtaining a semantic scene representation requires 4 main steps: 2 training and 
 1) Training an SRN
 Here a basic SRN is trained using images at various poses Please refer to the original SRNS repository for details for this step. This can be done with only RGB images as per the original SRNs paper (vanilla SRN) or additionally supervised with segmentation data (semantic SRN). For our main experiment we first train a vanilla SRN. The scripts for this step are found in ```training_scripts/```. As an example consider training a vanilla SRN for Chairs:
 ```
-export CUDA_VISIBLE_DEVICES=0 # pick GPU  
 python ../train.py  \
-	--config_filepath ..../config_train_chair.yml \ # path to config file to set the data and logging roots
+	--config_filepath "path to config_train_chair.yml" \ # path to config file to set the data and logging roots
 	--log_dir train_vanilla \ # name of directory which will contain model checkpoints and tensorboard events
 	--img_sidelengths 64,128 \ # training image sidelengths (max is 128) one for each training segment 
 	--batch_size_per_img_sidelength 4,8 \ # batch sizes, one for each training segment
@@ -74,16 +73,18 @@ python ../train.py  \
 In this step the features of a pretrained SRN are linearly regressed to semantic labels using a small training set of segmentation maps---the goal here is to learn the optimal regression coefficents. Note that this step is only necessary if a vanilla SRN was trained since the semantic SRN was already trained to produce semantic labels. The scripts for this step can be found in ```update_scripts/```
 An example call for this step is updating a vanilla SRN with 30 segmentation maps (10 chair instances each with 3 views):
 
-
-
-
-See `python train.py --help` for all train options. 
-Example train call:
 ```
-python train.py --data_root [path to directory with dataset] \
-                --val_root [path to directory with train_val dataset] \
-                --logging_root [path to directory where tensorboard summaries and checkpoints should be written to] 
+python ../update.py \
+    --config_filepath "path to config_train_chair.yml" \ 
+    --model_type linear \ # specify the semantic predictor type ('linear' regressor or 1 layer 'MLP')
+    --log_dir updated_srn \ # where to save out the learned linear coefficients
+    --checkpoint_path "path to pretrained vanilla srn" \ # pretrained SRN which is to be updated
+    --img_sidelengths 128  --batch_size_per_img_sidelength 4  --max_steps_per_img_sidelength 5000 \
+    --steps_til_ckpt 500 \ # how often to checkpoint
+    --max_num_instances_train 10 \ # number of chair instances to use 
+    --specific_observation_idcs 0,1,2  # number of views per chair instance to use
 ```
+
 To monitor progress, the training code writes tensorboard summaries every 100 steps into a "events" subdirectory in the logging_root.
 
 For experiments described in the paper, config-files are available that configure the command-line flags according to
@@ -96,24 +97,42 @@ python train.py --config_filepath train_configs/cars.yml
 ### Testing
 
 3) Learning latent codes from test time observations
-In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. An example call is found in test_scripts/single_shot.sh
+In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. The scripts for testing can be found in ```test_scripts```. An example call for testing given a single RGB observation (single shot) is:
+```
+python ../train.py \
+--config_filepath "path to config_test_chair.yml"  \
+--log_dir test_vanilla_1 \ # name of dir in logging root to save out the test time SRNs
+--checkpoint_path "path to pretrained srn" \ 
+--overwrite_embeddings \ # indicates that we want to learn just the latent codes for the test time examples with the rest of the SRN fixed.
+--img_sidelengths 128 --max_steps_per_img_sidelength 10000 --batch_size_per_img_sidelength 4 \
+--specific_observation_idcs 65 \ # which view we should use as the single given observation.
+--class_weight=0. \ # only use an rgb observation at test time
+```
 
 4) Rendering results from the learned semantic SRN
-Finally, with an SRN in hand for each test object, this final step produces samples of the semantic SRN in the form of rgb images an point clouds as well as their corresponding semantic segmentation maps and point clouds. An example call is found in result_scripts/single_shot.sh
+Finally, with a semantic SRN in hand for each test object, this final step simply renders rgb and segmentation views and/or point clouds for each test time instance. The scripts for these results can be found in ```result_scripts/```. An example of rendering results from a linearly updated vanilla SRN given a single observation is:
+```
+python ../test.py \
+    --config_filepath "path to config_test_chair.yml" \
+    --checkpoint_path "path to test time SRNS" \ # path to the outputs of step 3.
+    --log_dir linear_update_srn_30shot \
+    --linear_path "path to linear coefficients for segmentation" \ # path to linear model from step 2
+    --eval_mode 'linear' \ # indicates we are using a linearly updated vanilla SRN
+    --input_idcs 65 \ # indicates which observation(s) were given at test time (step 3), in this case it was a single view.
+    --point_cloud # indicates that we would like to render point clouds for every test instance in addition to novel views.
+```
 
-Example test call:
+In summary, to obtain our main result from the paper, run steps 1-4 as per each example. For each experiment above, config files provide the location of the data and where to log the results. These are specified in the config yml files (e.g., ```config_train_chair.yml``` and should be updated according to the users directory structure. 
+
+### Logging
+The logging_root flag in the config files and log_dir flag in the arguments specify where each experiment logs its model files and tensorboard events. That is for each experiment, the relevant output is stored in ```logging_root/log_dir```. Then to visualize the training, go to this directory for the experiment of interest and run 
 ```
-python test.py --data_root [path to directory with dataset] ] \
-               --logging_root [path to directoy where test output should be written to] \
-               --num_instances [number of instances in training set (for instance, 2433 for shapenet cars)] \
-               --checkpoint [path to checkpoint]
+tensorboard --logdir events/ --port xxxx
 ```
-Again, for experiments described in the paper, config-files are available that configure the command-line flags according to
-the settings in the paper. Example call:
-```
-[edit test_configs/cars.yml to point to the correct dataset and logging paths]
-python test.py --config_filepath test_configs/cars_training_set_novel_view.yml
-```
+which can be accessed at the site localhost:xxxx. For remote access make sure to forward xxxx to a local port. 
+
+## Quick results
+To test the setup as well as see some quick results for multi-shot SRN+Linear (from the paper), go into ```quick_setup/``` and modify ```quick_run.sh``` with the relevant paths. Then while in the ```quick_setup/``` directory, run ```quick_run.sh``` and check out the results in the newly created ```quick_setup/results/``` directory.
 
 ## Misc
 ### Citation
@@ -128,8 +147,7 @@ If you find our work useful in your research, please cite:
 ```
 
 ### Submodule "pytorch_prototyping"
-The code in the subdirectory "pytorch_prototyping" comes from a library of custom pytorch modules that I use throughout my 
-research projects. You can find it [here](https://github.com/vsitzmann/pytorch_prototyping).
+The code in the subdirectory "pytorch_prototyping" comes from a library of custom pytorch modules, you can find it [here](https://github.com/vsitzmann/pytorch_prototyping).
 
 ### Contact
 If you have any questions, please email Amit Kohli at apkohli@berkeley.edu.
