@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 from models import *
 import util
 
-
 p = configargparse.ArgumentParser()
 p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
 
@@ -30,21 +29,19 @@ p.add_argument('--batch_size_per_img_sidelength', type=str, default="92, 16",
 # Training options
 p.add_argument('--data_root', required=True, help='Path to directory with training data.')
 p.add_argument('--val_root', required=False, help='Path to directory with validation data.')
-p.add_argument('--logging_root', type=str,
-               required=True, help='path to directory where checkpoints & tensorboard events will be saved.')
+p.add_argument('--logging_root', type=str, default='./logs',
+               required=False, help='path to directory where checkpoints & tensorboard events will be saved.')
 p.add_argument('--log_dir', required=False, default = 'logs', help='Name of dir within logging root to store checkpoints and events')               
-p.add_argument('--obj_name', required=True,type=str, help='Name of object class to train on')
+p.add_argument('--obj_name', required=True,type=str, help='Name of object in question')
+p.add_argument('--num_classes', type=int, default=6,
+               help='number of seg classes for the given object')
+p.add_argument('--model_type', type=str, default='linear', help='number of seg classes for the given object')
+
 
 p.add_argument('--lr', type=float, default=4e-4, help='learning rate. default=4e-4')
 
 p.add_argument('--class_weight', type=float, default=8,
-               help='Weight for semantic segmentation loss term')
-p.add_argument('--l1_weight', type=float, default=200,
                help='Weight for l1 loss term (lambda_img in paper).')
-p.add_argument('--kl_weight', type=float, default=1,
-               help='Weight for l2 loss term on code vectors z.')
-p.add_argument('--reg_weight', type=float, default=1e-3,
-               help='Weight for depth regularization term.')
 
 p.add_argument('--steps_til_ckpt', type=int, default=5000,
                help='Number of iterations until checkpoint is saved.')
@@ -59,6 +56,12 @@ p.add_argument('--preload', action='store_true', default=False,
 p.add_argument('--checkpoint_path', default=None,
                help='Checkpoint to trained model.')
 
+p.add_argument('--linear_path', default=None,
+               help='Checkpoint to trained model.')
+
+p.add_argument('--validation_path', default=None,
+               help='Checkpoint to trained model.')
+
 p.add_argument('--overwrite_embeddings', action='store_true', default=False,
                help='When loading from checkpoint: Whether to discard checkpoint embeddings and initialize at random.')
 p.add_argument('--start_step', type=int, default=0,
@@ -66,6 +69,9 @@ p.add_argument('--start_step', type=int, default=0,
 
 p.add_argument('--specific_observation_idcs', type=str, default=None,
                help='Only pick a subset of specific observations for each instance.')
+
+p.add_argument('--specific_ins', nargs = '+', default=None,
+               help='Only pick a subset of instances.')
 
 p.add_argument('--max_num_instances_train', type=int, default=-1,
                help='If \'data_root\' has more instances, only the first max_num_instances_train are used')
@@ -112,6 +118,7 @@ def train():
                                              max_observations_per_instance=opt.max_num_observations_train,
                                              img_sidelength=img_sidelengths[0],
                                              specific_observation_idcs=specific_observation_idcs,
+                                             specific_ins=opt.specific_ins,
                                              samples_per_instance=1)
 
     assert (len(img_sidelengths) == len(batch_size_per_sidelength)), \
@@ -126,27 +133,68 @@ def train():
                                                obj_name=opt.obj_name,
                                                max_num_instances=opt.max_num_instances_val,
                                                max_observations_per_instance=opt.max_num_observations_val,
-                                               img_sidelength=max(img_sidelengths),
+                                               img_sidelength=opt.img_sidelength,
                                                samples_per_instance=1)
         val_dataloader = DataLoader(val_dataset,
-                                    batch_size=opt.batch_size,
+                                    batch_size=2,
                                     shuffle=False,
                                     drop_last=True,
                                     collate_fn=val_dataset.collate_fn)
 
-    model = SRNsModel(num_classes=train_dataset.num_classes,
-                      num_instances=train_dataset.num_instances,
-                      latent_dim=opt.embedding_size,
-                      tracing_steps=opt.tracing_steps)
-    model.train()
-    model.cuda()
+
 
     if opt.checkpoint_path is not None:
         print("Loading model from %s" % opt.checkpoint_path)
-        util.custom_load(model, path=opt.checkpoint_path,
+
+        num_training_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
+        model_srn = SRNsModel(num_classes=train_dataset.num_classes,
+                      num_instances=num_training_instances,
+                      latent_dim=opt.embedding_size,
+                      tracing_steps=opt.tracing_steps)
+
+        util.custom_load(model_srn, path=opt.checkpoint_path,
                          discriminator=None,
                          optimizer=None,
                          overwrite_embeddings=opt.overwrite_embeddings)
+
+    if opt.validation:
+        print("Loading model from %s" % opt.validation_path)
+
+        num_validation_instances = torch.load(opt.checkpoint_path)['model']['latent_codes.weight'].shape[0]
+        model_srn_val = SRNsModel(num_classes=val_dataset.num_classes,
+                      num_instances=num_validation_instances,
+                      latent_dim=opt.embedding_size,
+                      tracing_steps=opt.tracing_steps)
+        model_srn_val.eval()
+        model_srn_val.cuda()
+        util.custom_load(model_srn_val, path=opt.validation_path,
+                                discriminator=None,
+                                optimizer=None,
+                                overwrite_embeddings=opt.overwrite_embeddings)
+
+    if opt.model_type == 'linear':
+        print('Using Linear Regressor')
+        model_linear = LinearModel(train_dataset.num_classes)
+        
+    elif opt.model_type == 'mlp':
+        print('Using 3-Layer MLP')
+        model_linear = MLP(train_dataset.num_classes)
+
+    if opt.linear_path is not None:
+        print("Loading model from %s" % opt.checkpoint_path)
+        util.custom_load(model_linear, path=opt.linear_path, discriminator=None,
+                         overwrite_embeddings=False)
+    
+
+    if opt.overwrite_embeddings and opt.linear_path is not None:
+            model_srn.train()
+            model_linear.eval()
+    else:
+            model_srn.eval()
+            model_linear.train()
+
+    model_srn.cuda()
+    model_linear.cuda()
 
     ckpt_dir = os.path.join(logging_dir, 'checkpoints')
     events_dir = os.path.join(logging_dir, 'events')
@@ -161,14 +209,16 @@ def train():
 
     # Save text summary of model into log directory.
     with open(os.path.join(logging_dir, "model.txt"), "w") as out_file:
-        out_file.write(str(model))
+        if opt.overwrite_embeddings and opt.linear_path is not None:
+            out_file.write(str(model_srn))
+        else:
+            out_file.write(str(model_linear))
 
-
-    dense_parameters = [param for name, param in model.named_parameters() if 'latent_codes' not in name]
-    sparse_parameters = [param for name, param in model.named_parameters() if 'latent_codes' in name]
-
-    dense_optimizer = torch.optim.Adam(dense_parameters, lr=opt.lr)
-    sparse_optimizer = torch.optim.SparseAdam(sparse_parameters, lr=opt.lr, betas=(0.5, 0.5), eps=1e-5)
+    if opt.overwrite_embeddings and opt.linear_path is not None:
+        sparse_parameters = [param for name, param in model_srn.named_parameters() if 'latent_codes' in name]
+        optimizer = torch.optim.SparseAdam(sparse_parameters, lr=opt.lr, betas=(0.5, 0.5), eps=1e-5)
+    else:
+        optimizer = torch.optim.Adam(model_linear.parameters(), lr=opt.lr)
 
     writer = SummaryWriter(events_dir)
     iter = opt.start_step
@@ -198,75 +248,58 @@ def train():
         # Loops over epochs.
         while True:
             for model_input, ground_truth in train_dataloader:
-                model_outputs = model(model_input)
+                if opt.overwrite_embeddings and opt.linear_path is not None:
+                    model_outputs = model_srn(model_input)
+                else:
+                    with torch.no_grad():
+                        model_outputs = model_srn(model_input)
+                    
+                seg_out = model_linear(model_outputs['features'])
+                model_outputs.update(seg_out)
 
-                sparse_optimizer.zero_grad()
-                dense_optimizer.zero_grad()
+                optimizer.zero_grad()
 
-                dist_loss = model.get_image_loss(model_outputs, ground_truth)
-                reg_loss = model.get_regularization_loss(model_outputs, ground_truth)
-                latent_loss = model.get_latent_loss()
-                class_loss = model.get_seg_loss(model_outputs, ground_truth)
+                class_loss = model_linear.get_seg_loss(seg_out, ground_truth)
 
-                weighted_dist_loss = opt.l1_weight * dist_loss
-                weighted_reg_loss = opt.reg_weight * reg_loss
-                weighted_latent_loss = opt.kl_weight * latent_loss
                 weighted_class_loss = opt.class_weight * class_loss
 
-                total_loss = (weighted_dist_loss
-                              + weighted_class_loss
-                              + weighted_reg_loss
-                              + weighted_latent_loss)
-
+                total_loss = weighted_class_loss
                 total_loss.backward()
-                sparse_optimizer.step()
-                dense_optimizer.step()
+                optimizer.step()
 
-                print("Iter %07d   Epoch %03d   L_img %0.4f   L_class %0.4f   L_latent %0.4f   L_depth %0.4f" %
-                      (iter, epoch, weighted_dist_loss, weighted_class_loss,
-                       weighted_latent_loss, weighted_reg_loss))
-
+                print("Iter %07d   Epoch %03d   L_class %0.4f" %
+                      (iter, epoch, weighted_class_loss))
                 with torch.no_grad():
-                    model.write_updates(writer, model_input, model_outputs, iter)
+                    model_srn.write_updates(writer, model_input, model_outputs, iter)
                 writer.add_scalar("scaled_class_loss", weighted_class_loss, iter)
-                writer.add_scalar("scaled_distortion_loss", weighted_dist_loss, iter)
-                writer.add_scalar("scaled_regularization_loss", weighted_reg_loss, iter)
-                writer.add_scalar("scaled_latent_loss", weighted_latent_loss, iter)
-                writer.add_scalar("total_loss", total_loss, iter)
 
                 if iter % opt.steps_til_val == 0 and opt.validation:
                     print("Running validation set...")
 
-                    model.eval()
+                    model_linear.eval()
                     with torch.no_grad():
-                        psnrs = []
-                        ssims = []
-                        dist_losses = []
                         class_losses = []
                         for model_input, ground_truth in val_dataloader:
-                            model_outputs = model(model_input)
-
-                            dist_loss = model.get_image_loss(model_outputs, ground_truth).cpu().numpy()
-                            class_loss = model.get_seg_loss(model_outputs, ground_truth).cpu().numpy()
-                            psnr, ssim = model.get_psnr(model_outputs, ground_truth)
-                            psnrs.append(psnr)
-                            ssims.append(ssim)
-                            dist_losses.append(dist_loss)
+                            model_outputs = model_srn_val(model_input)
+                            seg_out = model_linear(model_outputs['features'])
+                            class_loss = model_linear.get_seg_loss(seg_out, ground_truth).cpu().numpy()
                             class_losses.append(class_loss)
-
-                            model.write_updates(writer, model_input, model_outputs, iter, prefix='val_')
+                            model_srn_val.write_updates(writer, model_input, model_outputs, iter, prefix='val_')
 
                         writer.add_scalar("val_class_loss", np.mean(class_losses), iter)
-                        writer.add_scalar("val_dist_loss", np.mean(dist_losses), iter)
-                        writer.add_scalar("val_psnr", np.mean(psnrs), iter)
-                        writer.add_scalar("val_ssim", np.mean(ssims), iter)
-                    model.train()
+                    model_linear.train()
 
                 if iter % opt.steps_til_ckpt == 0:
-                    util.custom_save(model,
+                    if opt.overwrite_embeddings and opt.linear_path is not None:
+                        util.custom_save(model_srn,
                                      os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
                                      discriminator=None,
-                                     optimizer=[sparse_optimizer, dense_optimizer])
+                                     optimizer=[optimizer])
+                    else:
+                        util.custom_save(model_linear,
+                                     os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
+                                     discriminator=None,
+                                     optimizer=[optimizer])
 
                 iter += 1
                 step += 1
@@ -278,11 +311,16 @@ def train():
             if iter == cum_max_steps:
                 break
             epoch += 1
-
-    util.custom_save(model,
+    if opt.overwrite_embeddings and opt.linear_path is not None:
+        util.custom_save(model_srn,
                      os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
                      discriminator=None,
-                     optimizer=[sparse_optimizer, dense_optimizer])
+                     optimizer=[optimizer])
+    else:
+        util.custom_save(model_linear,
+                     os.path.join(ckpt_dir, 'epoch_%04d_iter_%06d.pth' % (epoch, iter)),
+                     discriminator=None,
+                     optimizer=[optimizer])
 
 
 def main():

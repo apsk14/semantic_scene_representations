@@ -5,10 +5,10 @@
 export CUDA_VISIBLE_DEVICES=0
 
 python ../test.py \
-    --config_filepath "/home/amit/projects/semantic_scene_representations/test_scripts/config_chairs_test.yml" \
+    --config_filepath ~/projects/semantic_scene_representations/config_test_table.yml \
     --checkpoint_path "/media/hugespace/amit/srn_new_logging/Chair/latent_vanilla/checkpoints/epoch_9999_iter_050000.pth" \
-    --logging_root "/media/hugespace/amit/srn_new_logging/Chair/results/linear_single_new" \
-    --linear_path "/media/hugespace/amit/srn_new_logging/Chair/linear_30/checkpoints/epoch_0642_iter_004500.pth" \
+    --log_dir linear_update_srn_30shot \
+    --linear_path "/media/hugespace/amit/srn_logging/Chair/update_linear_30/checkpoints/epoch_0714_iter_005000.pth" \
     --eval_mode 'linear' \
     --max_num_instances 5  \
     --batch_size 32 \

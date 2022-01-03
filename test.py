@@ -5,9 +5,9 @@ import torch
 import numpy as np
 import csv
 
-import new_dataset as dataio
+import dataio
 from torch.utils.data import DataLoader
-from srns_vincent import *
+from models import *
 import util
 
 p = configargparse.ArgumentParser()
@@ -26,8 +26,11 @@ p.add_argument('--obj_name', required=True,type=str, help='Name of object in que
 
 p.add_argument('--eval_mode', required=True,type=str, help='Which model to evaluate (linear, unet, srn)')
 
+p.add_argument('--reverse', required=False, default=False, action='store_true', help='Flag to indicate that the input was a segmentation map')
+
 p.add_argument('--logging_root', type=str, default='./logs',
                required=False, help='Path to directory where checkpoints & tensorboard events will be saved.')
+p.add_argument('--log_dir', required=False, default = 'logs', help='Name of dir within logging root to store checkpoints and events')               
 p.add_argument('--batch_size', type=int, default=32, help='Batch size.')
 p.add_argument('--preload', action='store_true', default=False, help='Whether to preload data to RAM.')
 
@@ -75,6 +78,8 @@ def test():
         input_idcs = list(map(int, opt.input_idcs.split(',')))
     else:
         input_idcs = []
+    
+    logging_dir = os.path.join(opt.logging_root, opt.log_dir)
 
     test_set = dataio.SceneClassDataset(root_dir=opt.data_root,
                                        obj_name=opt.obj_name,
@@ -149,10 +154,10 @@ def test():
         model_unet.eval()
         model_unet.cuda()
 
-    util.cond_mkdir(opt.logging_root)
+    util.cond_mkdir(logging_dir)
 
     # Save command-line parameters to log directory.
-    with open(os.path.join(opt.logging_root, "params.txt"), "w") as out_file:
+    with open(os.path.join(logging_dir, "params.txt"), "w") as out_file:
         out_file.write('\n'.join(["%s: %s" % (key, value) for key, value in vars(opt).items()]))
 
     print('Beginning evaluation...')
@@ -265,7 +270,7 @@ def test():
                 print('instance %04d   observation %03d   miou %0.4f   psnr %0.4f   ssim %0.4f' % (int(instance_idx.cpu().numpy()), idx , newIOU, psnr, ssim))
 
                 if output_flag:
-                    instance_dir = os.path.join(opt.logging_root, "%06d" % instance_idx)
+                    instance_dir = os.path.join(logging_dir, "%06d" % instance_idx)
                     rgb = os.path.join(instance_dir, 'rgb')
                     rgb_gt = os.path.join(instance_dir, 'rgb_gt')
                     seg = os.path.join(instance_dir, 'seg')
@@ -298,7 +303,10 @@ def test():
                             main_pc_rgb += [pc_out_rgb]
 
                     if idx in input_idcs:
-                        input_out = util.convert_image(trgt_imgs[i].squeeze())
+                        if opt.reverse:
+                            input_out = util.convert_image(trgt_segs_display[i].squeeze())
+                        else:
+                            input_out = util.convert_image(trgt_imgs[i].squeeze())
                         util.write_img(input_out, os.path.join(input_img, "%06d.png" % idx))
                     util.write_img(rgb_out, os.path.join(rgb, "%06d.png" % idx))
                     util.write_img(rgb_gt_out, os.path.join(rgb_gt, "%06d.png" % idx))
@@ -319,7 +327,7 @@ def test():
                      'miou': np.mean(instance_mious), 'stdiou': np.std(instance_mious), 'psnr':np.mean(instance_psnrs), 
                      'ssim': np.mean(instance_ssims),  'max_classes': max_classes}
     global_dict_data.append(global_sample)
-    csv_file = os.path.join(opt.logging_root, 'final_miou.csv')
+    csv_file = os.path.join(logging_dir, 'final_miou.csv')
     with open(csv_file, 'w') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=global_data_columns)
         writer.writeheader()
@@ -332,7 +340,7 @@ def test():
     part_iou = np.divide(part_intersect[0:], part_union[0:])
     mean_part_iou = np.mean(part_iou)
 
-    with open(os.path.join(opt.logging_root, "results.txt"), "w") as out_file:
+    with open(os.path.join(logging_dir, "results.txt"), "w") as out_file:
        out_file.write("mIOU %0.6f, PSNR %0.6f, SSIM %0.6f" % (np.mean(mious), np.mean(psnrs), np.mean(ssims)))
 
     print('mIOU: ', mIOU_mean)

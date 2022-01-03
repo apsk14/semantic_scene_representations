@@ -1,7 +1,0 @@
-data_root: /home/apsk14//data/final_data/Table/Table.test # Path to chairs training dataset.
-stat_root: /media/data1/apsk14/srn_seg_data/Table/Table.test #Path to stats for assigning label data
-img_sidelength: 128
-num_classes: 11
-obj_name: Table
-batch_size: 128
-

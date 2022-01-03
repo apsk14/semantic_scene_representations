@@ -1,0 +1,5 @@
+obj_name: Table
+data_root: /media/hugespace/amit/semantic_srn_data/Table/Table.test # Path to chairs training dataset.
+logging_root: /media/hugespace/amit/srn_logging/Table # Path to chairs training dataset.
+
+
