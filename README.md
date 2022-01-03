@@ -54,7 +54,7 @@ Obtaining a semantic scene representation requires 4 main steps: 2 training and 
 
 
 ### Training
-1) Training an SRN
+**1) Training an SRN**
 
 Here a basic SRN is trained using images at various poses Please refer to the original SRNS repository for details for this step. This can be done with only RGB images as per the original SRNs paper (vanilla SRN) or additionally supervised with segmentation data (semantic SRN). For our main experiment we first train a vanilla SRN. The scripts for this step are found in ```training_scripts/```. As an example consider training a vanilla SRN for Chairs:
 ```
@@ -67,7 +67,8 @@ python ../train.py  \
 	--class_weight=0. # indicates that only rgb will be used to train (vanilla srn)
 ```
 
-2) Updating SRN for semantic segmentation
+**2) Updating an SRN for semantic segmentation**
+
 In this step the features of a pretrained SRN are linearly regressed to semantic labels using a small training set of segmentation maps---the goal here is to learn the optimal regression coefficents. Note that this step is only necessary if a vanilla SRN was trained since the semantic SRN was already trained to produce semantic labels. The scripts for this step can be found in ```update_scripts/```
 An example call for this step is updating a vanilla SRN with 30 segmentation maps (10 chair instances each with 3 views):
 
@@ -83,18 +84,10 @@ python ../update.py \
     --specific_observation_idcs 0,1,2  # number of views per chair instance to use
 ```
 
-To monitor progress, the training code writes tensorboard summaries every 100 steps into a "events" subdirectory in the logging_root.
-
-For experiments described in the paper, config-files are available that configure the command-line flags according to
-the settings in the paper. You only need to edit the dataset path. Example call:
-```
-[edit train_configs/cars.yml to point to the correct dataset and logging paths]
-python train.py --config_filepath train_configs/cars.yml
-```
-
 ### Testing
 
-3) Learning latent codes from test time observations
+**3) Learning latent codes from test time observations**
+
 In this step, a number of views from a test time, unseen object are used to obtain the SRN that is most consistent with the observations. This can be done with as few as a single image/view of a test time object. The scripts for testing can be found in ```test_scripts```. An example call for testing given a single RGB observation (single shot) is:
 ```
 python ../train.py \
@@ -107,8 +100,9 @@ python ../train.py \
 --class_weight=0. \ # only use an rgb observation at test time
 ```
 
-4) Rendering results from the learned semantic SRN
-Finally, with a semantic SRN in hand for each test object, this final step simply renders rgb and segmentation views and/or point clouds for each test time instance. The scripts for these results can be found in ```result_scripts/```. An example of rendering results from a linearly updated vanilla SRN given a single observation is:
+**4) Rendering results from the updated SRN**
+
+Finally, with a semantically-aware SRN in-hand for each test object, this final step simply renders rgb and segmentation views and/or point clouds for each test time instance. The scripts for these results can be found in ```result_scripts/```. An example of rendering results from a linearly updated vanilla SRN (SRN+Linear in the paper) given a single observation is:
 ```
 python ../test.py \
     --config_filepath "path to config_test_chair.yml" \
@@ -120,7 +114,7 @@ python ../test.py \
     --point_cloud # indicates that we would like to render point clouds for every test instance in addition to novel views.
 ```
 
-In summary, to obtain our main result from the paper, run steps 1-4 as per each example. For each experiment above, config files provide the location of the data (```data_root```) and where to log the results (```logging_root```). These are specified in the config yml files (e.g., ```config_train_chair.yml``` and should be updated according to the user's directory structure. 
+In summary, to obtain our main result from the paper, run steps 1-4 as per each example. For each experiment above, config files provide the location of the data (```data_root```) and where to log the results (```logging_root```). Specifically, the yml files (e.g., ```config_train_chair.yml``` should be updated according to the user's directory structure. 
 
 ### Logging
 The logging_root flag in the config files and log_dir flag in the arguments specify where each experiment logs its model files and tensorboard events. That is, for each experiment, the relevant output is stored in ```logging_root/log_dir```. Then, to visualize the training, go to this directory for the experiment of interest and run 
